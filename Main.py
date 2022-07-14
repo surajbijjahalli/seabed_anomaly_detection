@@ -1,0 +1,460 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+Created on Tue Apr 26 11:31:48 2022
+
+@author: surajb
+"""
+
+
+#%% Import libraries
+import matplotlib.pyplot as plt
+import numpy as np
+import glob
+import pandas as pd
+import matplotlib.pyplot as plt
+import matplotlib.image as mpimg
+from random import randint
+
+
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+
+from torch.utils.data import Dataset, DataLoader
+from torchvision import transforms, utils
+
+
+
+from torch.utils.tensorboard import SummaryWriter
+
+# Logging metadata
+import neptune.new as neptune
+from neptune.new.types import File
+
+
+# Create neptune run object for logging metrics and metadata
+# NEPTUNE_API_TOKEN = "<api-token-here>"
+run = neptune.init(project='surajbijjahalli/marine-anomaly-detection',
+                   api_token='eyJhcGlfYWRkcmVzcyI6Imh0dHBzOi8vYXBwLm5lcHR1bmUuYWkiLCJhcGlfdXJsIjoiaHR0cHM6Ly9hcHAubmVwdHVuZS5haSIsImFwaV9rZXkiOiIzMGRhZjQzOS1mMTE2LTQ3NzUtYWEwYS1hNDg0ZDAxOTVhZTgifQ==')
+
+# Define parameters
+PARAMS = {'batch_size': 32,
+         'momentum': 0.5,
+         'learning_rate': 1e-3,
+         'weight_decay':1e-5,
+         'optimizer': 'Adam',
+         'use_gpu': True,
+         'num_epochs':100 }
+
+run['parameters'] = PARAMS
+
+writer = SummaryWriter()
+#%% Grab paths to training images
+
+#train_data_path = '/media/surajb/Extreme SSD/marine_dataset_Jervis_2021/r20210407_061916_NG106_hyams_depth_gated_target/raw_targetless_imgs/alp/converted_images'
+
+
+# train_data_path = '/home/surajb/marine_anomaly_detection/dataset_split/train/data'
+# test_data_path = '/home/surajb/marine_anomaly_detection/dataset_split/test/data'
+# val_data_path = '/home/surajb/marine_anomaly_detection/dataset_split/val/data'
+
+train_data_path = '../dataset_split/train/data'
+test_data_path = '../dataset_split/test/data'
+val_data_path = '../dataset_split/val/data'
+
+# Empty list to store paths to images
+train_image_paths = []
+test_image_paths = []
+val_image_paths = []
+
+# Grab paths to images in train folder
+for data_path in glob.glob(train_data_path + '/*'):
+    
+    train_image_paths.append(data_path)
+    
+train_image_paths = list(train_image_paths)
+
+# Grab paths to images in test folder
+for data_path in glob.glob(test_data_path + '/*'):
+    
+    test_image_paths.append(data_path)
+    
+test_image_paths = list(test_image_paths)
+
+
+# Grab paths to images in validation folder
+for data_path in glob.glob(val_data_path + '/*'):
+    
+    val_image_paths.append(data_path)
+    
+val_image_paths = list(val_image_paths)
+# THIS IS WRONG - SHOULD BE VAL IMAGE PATHS
+
+#%% Import custom classes and define transform
+
+
+# the dataset we created in Notebook 1 is copied in the helper file `data_load.py`
+from data_load import MarineBenthicDataset, visualize_output_loader,visualize_raw_data_loader, encoder_sample_output,visualize_vae_output
+# the transforms we defined in Notebook 1 are in the helper file `data_load.py`
+from data_load import RescaleCustom, RandomCropCustom, NormalizeNew, ToTensorCustom, RandomRotateCustom, RandomHorizontalFlip,RandomVerticalFlip,ColorJitter
+
+
+# Define data transforms for training, validation and testing 
+# train_transform = transforms.Compose([RandomCropCustom(64),ToTensorCustom(),RandomHorizontalFlip(),RandomVerticalFlip()])
+# valid_transform = transforms.Compose([RandomCropCustom(64),ToTensorCustom()])
+
+train_transform = transforms.Compose([RescaleCustom(64), ToTensorCustom(),RandomHorizontalFlip(),RandomVerticalFlip()])
+valid_transform = transforms.Compose([RescaleCustom(64),ToTensorCustom()])
+
+test_transform  = transforms.Compose([ToTensorCustom()])
+
+
+
+#%% Define function for creating dataset and dataloaders
+
+def create_datasets(batch_size, train_image_paths = train_image_paths,test_image_paths=test_image_paths,val_image_paths=val_image_paths,
+                    train_transform=train_transform,test_transform=test_transform,valid_transform=valid_transform):
+
+    #Raw dataset
+    raw_dataset = MarineBenthicDataset(train_image_paths)
+                    
+    # create datasets for training, validation and testing. 
+    test_dataset = MarineBenthicDataset(test_image_paths,transform=test_transform)
+
+    # create new training dataset for each epoch
+    train_dataset = MarineBenthicDataset(train_image_paths,transform=train_transform)
+    
+    # create new valid dataset for each epoch
+    valid_dataset = MarineBenthicDataset(val_image_paths,transform=valid_transform)
+            
+        
+      
+    
+    # load training data in batches
+    train_loader = DataLoader(train_dataset, 
+                              batch_size=batch_size,
+                              shuffle=True, 
+                              num_workers=0)
+    
+    # load validation data in batches
+    valid_loader = DataLoader(valid_dataset,batch_size=batch_size,shuffle=True,num_workers=0)
+    
+    # load test data in batches
+    test_loader = DataLoader(test_dataset, 
+                             batch_size=batch_size,
+                             shuffle=True,  
+                             num_workers=0)
+    
+    raw_loader = DataLoader(raw_dataset, 
+                             batch_size=batch_size,
+                             shuffle=True,  
+                             num_workers=0)
+    
+    return train_loader, test_loader, valid_loader,train_dataset,test_dataset,valid_dataset,raw_dataset,raw_loader
+
+
+
+
+
+#%% Create datasets and dataloaders
+batch_size = PARAMS['batch_size']
+JB_train_loader,JB_test_loader,JB_val_loader,JB_train_dataset,JB_test_dataset,JB_valid_dataset,raw_dataset,raw_loader = create_datasets(batch_size=batch_size)
+
+
+
+
+# print some stats about the dataset
+print('Length of training dataset: ', len(JB_train_dataset))
+print('Length of validation dataset: ', len(JB_valid_dataset))
+print('Length of test dataset: ', len(JB_test_dataset))
+
+#print('Original Image shape: ', JervisDataset[0]['image'].shape)
+print('Original image shape', raw_dataset[0]['image'].shape)
+print('Transformed Image shape: ', JB_train_dataset[0]['image'].shape)
+
+#plot sample images from dataloader - This is to observe that transforms are 
+#correctly applied before training
+      
+visualize_raw_data_loader(raw_loader)
+visualize_output_loader(JB_train_loader)
+
+
+#%% Import VAE model
+
+from models_2 import VariationalAutoencoder,vae_loss
+
+
+
+vae = VariationalAutoencoder()
+print(vae)
+
+# %% Initialize weights
+
+# Define function for initializing network weights
+#Xavier initialization - All weights of a layer are picked from a zero-mean normal distribution with variance 
+#being a function of the number of inputs to that layer (i.e. the number of nodes in the previous layer)
+
+def init_weights(layer):
+    torch.nn.init.xavier_normal_(layer.weight, gain=nn.init.calculate_gain('relu'))
+    layer.bias.data.fill_(0.01) # To initialize bias parameters
+
+
+# Call initialization function on encoder weights
+
+init_weights(vae.encoder.conv1)
+init_weights(vae.encoder.conv2)
+init_weights(vae.encoder.conv3)
+init_weights(vae.encoder.conv4)
+init_weights(vae.encoder.conv5)
+
+init_weights(vae.encoder.fc_mu)
+init_weights(vae.encoder.fc_logvar)
+
+# Initialize decoder weights
+
+init_weights(vae.decoder.fc6)
+
+init_weights(vae.decoder.conv_transpose7)
+init_weights(vae.decoder.conv_transpose8)
+init_weights(vae.decoder.conv_transpose9)
+init_weights(vae.decoder.conv_transpose10)
+init_weights(vae.decoder.conv_transpose11)
+init_weights(vae.decoder.conv12)
+
+# Get number of trainable parameters in the model
+num_params = sum(p.numel() for p in vae.parameters() if p.requires_grad)
+
+print(vae)
+print('Number of parameters: %d' % num_params)
+
+
+# Pass a batch of images from the train loader through the model before training
+       
+orig_image_sample,orig_image_sample_name,recon_image_sample,latent_mu_sample,latent_logvar_sample = encoder_sample_output(vae,JB_train_loader)
+
+# Visualize output from VAE
+
+visualize_vae_output(orig_image_sample, recon_image_sample)   
+
+
+#%% Model training
+
+# Set up functions for regulating the training routine
+
+#import loss function - sum of reconstruction error and kl divergence
+
+from training_utils import EarlyStopping,write_list_to_file
+
+
+# Define params for training
+use_gpu = PARAMS['use_gpu']
+num_epochs = PARAMS['num_epochs']
+learning_rate = PARAMS['learning_rate']
+weight_decay = PARAMS['weight_decay']
+device = torch.device("cuda" if use_gpu and torch.cuda.is_available() else "cpu")
+vae = vae.to(device)
+optimizer = torch.optim.Adam(params=vae.parameters(), lr=learning_rate, weight_decay=weight_decay)
+
+# Define scheduler to reduce learning rate when a validation loss has stopped improving - default reduction is 0.1
+plateau_lr_scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, 'min',  patience=1, verbose=True)
+
+# The input arguments of the scheduler are:
+#optimizer - the defined optimizer for adjusting weights
+#Mode: 'min'/'max' - whether to reduce learning rate based on whether a metric is decreasing('min') or increasing('max')
+#patience: Number of epochs with no improvement (in metric) after which learning rate will be reduced 
+
+
+num_params = sum(p.numel() for p in vae.parameters() if p.requires_grad)
+print('Number of trainable parameters: %d' % num_params)    
+
+# samp_images = next(iter(JB_train_loader))['image']
+# writer.add_graph(vae, samp_images)
+
+# Define validation loss
+def validation_loss(valid_loader, vae):  # pass in validation loader and the model as input arguments
+    # set the module to evaluation mode
+    vae.eval()
+    loss = 0.0
+    running_loss = 0.0
+    # iterate through the test dataset
+    for i, batch in enumerate(valid_loader): #iterate through validation loader batch by batch
+        # get sample data: images and ground truth keypoints
+        images = batch['image']
+        name = batch['name']
+        
+        
+        images = images.type(torch.FloatTensor)
+        images = images.to(device)
+        # forward pass to get net output
+        images_recon, latent_mu, latent_logvar = vae(images)
+        
+        # calculate the loss 
+        loss,recon_val_loss,kl_val_loss = vae_loss(images_recon, images, latent_mu, latent_logvar)
+        running_loss += loss.item()
+    avg_loss = running_loss/(i+1)
+    vae.train()
+    return avg_loss
+
+
+
+
+
+  
+    
+# Train model
+
+train_loss_over_time = [] # to track the loss as the network trains
+val_loss_over_time = [] # to track the validation loss as the network trains
+val_loss_min = np.Inf
+early_stopping = EarlyStopping()
+learning_rate_list = [] # to track learning rate when a scheduler is used
+vae.train()
+
+#Directory to save checkpoint and final models 
+
+model_dir = 'saved_models/'
+
+for epoch in range(num_epochs):
+    running_train_loss = 0.0
+    avg_val_loss = 0.0
+    avg_train_loss = 0.0
+    
+    running_train_recon_loss = 0.0
+    running_train_kl_loss = 0.0
+    
+    avg_train_recon_loss = 0.0
+    avg_train_kl_loss = 0.0
+
+       # train on batches of data, assumes you already have train_loader
+    for batch_i, data in enumerate(JB_train_loader):
+        
+        # get the input images in each batch and their corresponding names
+        images = data['image']
+        name = data['name']
+        
+        images = images.to(device)
+        
+        # forward pass the images through the network
+        
+        image_recon,mu_z,log_var_z = vae(images)
+        
+        # Calculate loss
+        loss,recon_train_loss,kl_train_loss = vae_loss(image_recon, images, mu_z, log_var_z)
+        
+       # zero the parameter (weight) gradients
+        optimizer.zero_grad()
+            
+            # backward pass to calculate the weight gradients
+        loss.backward()
+
+            # update the weights
+        optimizer.step()
+        
+            # print loss statistics
+            # to convert loss into a scalar and add it to the running_loss, use .item()
+        running_train_loss += loss.item()
+        running_train_recon_loss += recon_train_loss.item()
+        running_train_kl_loss += kl_train_loss.item() 
+        
+    # validate the model using the validation dataset
+        
+    avg_val_loss = validation_loss(JB_val_loader, vae) # returns loss averaged over all mini-batches in the validation loader
+        
+    
+    
+    # Average the training loss over all the mini-batches in the training loader for one epoch
+        
+    avg_train_loss = running_train_loss/len(JB_train_loader)
+    avg_train_recon_loss = running_train_recon_loss/len(JB_train_loader)
+    avg_train_kl_loss = running_train_kl_loss/len(JB_train_loader)
+    
+    # creating a logging object so that you can track it on Neptune dashboard
+    run['metrics/train_loss'].log(avg_train_loss)
+    run['metrics/val_loss'].log(avg_val_loss)
+        
+    train_loss_over_time.append(avg_train_loss)
+    val_loss_over_time.append(avg_val_loss)
+    
+    fig_export = visualize_vae_output(images, image_recon)
+    learning_rate_over_time = optimizer.state_dict()['param_groups'][0]['lr']
+    learning_rate_list.append(learning_rate_over_time)
+    
+    # export figure to neptune - this blog post is the correct way to do it: https://towardsdatascience.com/a-quick-guide-for-tracking-pytorch-experiments-using-neptune-ai-6321e4b6040f
+    # run["predictions/{}".format(epoch)].upload(File.as_image(fig_export))
+    run["predictions/recon_imgs"].upload(File.as_image(fig_export))
+    
+    print('Epoch:', epoch + 1, 'Avg. Training Loss:',avg_train_loss, 'Avg. Validation Loss:',avg_val_loss)
+    print('Epoch:', epoch + 1,  'Avg. reconstruction training Loss:',avg_train_recon_loss, 'Avg. reconstruction kl Loss:',avg_train_kl_loss)
+    
+    writer.add_scalars('Training vs. Validation Loss', { 'Training' : avg_train_loss, 'Validation' : avg_val_loss },epoch+1)  
+    writer.add_scalars('Learning rate', {'learning rate':learning_rate_over_time},epoch+1)  
+        # # The below lines print every 10 mini-batches. Uncomment if you want more
+        # # frequent printing to display of the losses
+        # if batch_i % 10 == 9 or batch_i == 0:    # print every 10 batches
+        #     if batch_i == 0:
+        #         avg_train_loss = running_train_loss
+        #         avg_train_recon_loss = running_train_recon_loss
+        #         avg_train_kl_loss = running_train_kl_loss
+        #     else:
+        #         avg_train_loss = running_train_loss/10
+        #         avg_train_recon_loss = running_train_recon_loss/10
+        #         avg_train_kl_loss = running_train_kl_loss/10
+                
+        #         avg_val_loss = validation_loss(JB_val_loader, vae)
+        #         train_loss_over_time.append(avg_train_loss)
+        #         val_loss_over_time.append(avg_val_loss)
+        #         print('Epoch:', epoch + 1, 'Batch:',batch_i+1, 'Avg. Training Loss:',avg_train_loss, 'Avg. Validation Loss:',avg_val_loss)
+        #         print('Epoch:', epoch + 1, 'Batch:',batch_i+1, 'Avg. reconstruction training Loss:',avg_train_recon_loss, 'Avg. reconstruction kl Loss:',avg_train_kl_loss)
+                
+        #         running_train_loss = 0.0
+        #         running_train_recon_loss=0.0
+        #         running_train_kl_loss = 0.0
+                
+        #         writer.add_scalars('Training vs. Validation Loss', { 'Training' : avg_train_loss, 'Validation' : avg_val_loss },epoch * len(JB_train_loader) + batch_i)
+        #        # writer.add_scalars({ 'Training' : avg_train_loss, 'Validation' : avg_val_loss })
+        #         #writer.add_scalars('Training', {'loss':avg_train_loss},epoch * len(JB_train_loader) + batch_i) 
+        #         writer.add_scalars('Validation', {'loss':avg_val_loss},epoch * len(JB_train_loader) + batch_i)
+        #         writer.add_scalars('Reconstruction', {'loss':avg_train_recon_loss},epoch * len(JB_train_loader) + batch_i)
+        #         writer.add_scalars('KL divergence', {'loss':avg_train_kl_loss},epoch * len(JB_train_loader) + batch_i)
+                
+                
+               
+    # reduce learning rate when avg_val_loss has stopped improving. Here avg_val_loss is used as a metric to trigger reduction in learning rate.
+    # plateau_lr_scheduler.step(avg_val_loss)
+    
+    # save model if validation loss has decreased
+    if avg_val_loss <= val_loss_min:
+       checkpoint_name = str(epoch+1) 
+       print('Validation loss decreased ({:.6f} --> {:.6f}).  Saving model ...'.format(val_loss_min,avg_val_loss))
+       # torch.save(vae.state_dict(), model_dir+'checkpoint'+checkpoint_name+'.pt')
+       val_loss_min = avg_val_loss
+    
+       
+       
+## TODO: change the name to something uniqe for each new model
+
+model_name = 'final_model.pt'
+
+# after training, save your model parameters in the dir 'saved_models'
+torch.save(vae.state_dict(), model_dir+model_name)    
+
+
+
+
+#%%
+write_list_to_file(train_loss_over_time,  model_name + 'Training_Loss.csv')
+write_list_to_file(val_loss_over_time, model_name + 'Validation_Loss.csv')   
+                        
+
+
+#[CONTINUE FROM HERE]
+
+# Save this for later - tensorboard visualizations for autoencoders (https://uvadlc-notebooks.readthedocs.io/en/latest/tutorial_notebooks/tutorial9/AE_CIFAR10.html)  
+
+
+
+
+
+
+ 

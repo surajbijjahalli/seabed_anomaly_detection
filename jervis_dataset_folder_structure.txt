@@ -1,0 +1,62 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+Created on Mon Jun  6 16:49:43 2022
+
+@author: surajb
+"""
+
+"""
+Jervis bay 2021 processed dataset - folder structure
+ 
+r20210407_061916_NG106_hyams_depth_gated_target
+|
+|_____dRAWLOGS_cv  # contains .lcm.RAW.auv file – pose,status info etc
+|
+|_____i20210407_061916_cv
+|	|
+|	|______diary.log
+|	|______image_info.txt
+|	|______[images] #6404 images – large size(~13 Mb) – uncompressed processed images ? 
+|
+|_____i20210407_061916_ds #i indicates images, cv- converted images ds- downsampled 
+|	|
+|	|______[images] #6218 images – small size(<1Mb) – is the target not in this folder ? 
+|
+|_____pixelstats20210519_1558
+|	|
+|	|______[images] #32 images for a calibration routine ? 
+|
+|_____raw_target_imgs
+|	|_____al # al – autolevel – contrast enhancement over the entire image
+|	|	|______converted_images 
+|	|	|	|___[images] #28 images (compressed to <1 Mb)
+|	|	|______[images] #28 .png images (8~9 Mb)
+|	|
+|	|_____alp # autolevel at a pixel level over an entire dataset
+|	|	|______converted_images
+|	|	|	|___[images] #14 images (compressed to <1 Mb)
+|	|	|______[images] # 14 images (8~9 Mb)
+|	|
+|	|_____[images] #28 images(.tif format - ~12 Mb)
+|
+|____raw_targetless_imgs
+|	|_____alp
+|	|	|______converted_images 
+|	|	|	|___[images] #6134 images (compressed to <1 Mb)
+|	|	|______[images] #6162 images (8~9 Mb)
+|	|
+|	|_____i20210407_061916
+|	|	|______[images] #6374 .png images (not fully processed – dark images)
+|	|		
+|	|______pixel_stat 
+|	|
+|	|_____[images] # 32 images (presumably for calibration)
+|
+|____renav20210519_1634
+|	|_____# contains csv files with (could be used for plotting trajectory) and several .data files – also has image names – could link images to locations # stereo_pose_est.data is important
+|
+|____slam_cache_i20210407_0619_ds
+|	|___slam_feature_cache.h5 
+|____diary.log
+"""
