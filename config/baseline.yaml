@@ -1,29 +1,34 @@
+experiment_params:
+  experiment_name: 'baseline'
+  output_path: "experiments"
+
+
+
 model_params:
-  name: 'baseline'
+  model_name: 'BetaVae'
   in_channels: 3
   latent_dim: 256
-
+  kld_weight: 1.0
 
 data_params:
-  train_data_path: "/home/surajb/marine_anomaly_detection/dataset_split/train/data"
-  val_data_path: "/home/surajb/marine_anomaly_detection/dataset_split/val/data"
-  test_data_path: "/home/surajb/marine_anomaly_detection/dataset_split/test/data"
+  train_data_path: "dataset_split/train/data"
+  val_data_path: "dataset_split/val/data"
+  test_data_path: "dataset_split/test/data"
   train_batch_size: 32
   val_batch_size:  32
-  patch_size: 64
+  test_batch_size: 32
   num_workers: 0
 
 trainer_params:
-  gpus: 0
+  use_gpu: True
   max_epochs: 100
   LR: 1e-3
   weight_decay: 1e-5
-  kld_weight: 1.0
+  
   
   
 
-logging_params:
-  save_dir: "saved_models/"
+
   
   
   

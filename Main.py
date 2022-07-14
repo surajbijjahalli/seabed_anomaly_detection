@@ -15,6 +15,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import matplotlib.image as mpimg
 from random import randint
+import os
 
 
 import torch
@@ -32,22 +33,68 @@ from torch.utils.tensorboard import SummaryWriter
 import neptune.new as neptune
 from neptune.new.types import File
 
+import yaml
 
-# Create neptune run object for logging metrics and metadata
-# NEPTUNE_API_TOKEN = "<api-token-here>"
-run = neptune.init(project='surajbijjahalli/marine-anomaly-detection',
-                   api_token='eyJhcGlfYWRkcmVzcyI6Imh0dHBzOi8vYXBwLm5lcHR1bmUuYWkiLCJhcGlfdXJsIjoiaHR0cHM6Ly9hcHAubmVwdHVuZS5haSIsImFwaV9rZXkiOiIzMGRhZjQzOS1mMTE2LTQ3NzUtYWEwYS1hNDg0ZDAxOTVhZTgifQ==')
+# # Create neptune run object for logging metrics and metadata
+# # NEPTUNE_API_TOKEN = "<api-token-here>"
+# run = neptune.init(project='surajbijjahalli/marine-anomaly-detection',
+#                    api_token='eyJhcGlfYWRkcmVzcyI6Imh0dHBzOi8vYXBwLm5lcHR1bmUuYWkiLCJhcGlfdXJsIjoiaHR0cHM6Ly9hcHAubmVwdHVuZS5haSIsImFwaV9rZXkiOiIzMGRhZjQzOS1mMTE2LTQ3NzUtYWEwYS1hNDg0ZDAxOTVhZTgifQ==')
 
-# Define parameters
-PARAMS = {'batch_size': 32,
-         'momentum': 0.5,
-         'learning_rate': 1e-3,
-         'weight_decay':1e-5,
-         'optimizer': 'Adam',
-         'use_gpu': True,
-         'num_epochs':100 }
+# folder to load config file
+CONFIG_PATH = "config/"
 
-run['parameters'] = PARAMS
+# Function to load yaml configuration file
+def load_config(config_name):
+    with open(os.path.join(CONFIG_PATH, config_name)) as file:
+        config = yaml.safe_load(file)
+
+    return config
+
+
+config = load_config("baseline.yaml")
+
+#print(config)
+
+
+# # Define parameters
+# PARAMS = {'batch_size': 32,
+#          'momentum': 0.5,
+#          'learning_rate': 1e-3,
+#          'weight_decay':1e-5,
+#          'optimizer': 'Adam',
+#          'use_gpu': True,
+#          'num_epochs':100 }
+
+output_path = config['experiment_params']['output_path']
+experiment_name = config['experiment_params']['experiment_name']
+experiment_path = os.path.join(output_path, experiment_name) 
+training_log_path = os.path.join(experiment_path,'training_log')
+saved_models_path = os.path.join(experiment_path,'saved_models')
+test_results_path = os.path.join(experiment_path,'test_results')
+
+if not os.path.exists(training_log_path):
+    os.makedirs(training_log_path)
+    print("folder '{}' created ".format(training_log_path))
+else:
+    print("folder {} already exists".format(training_log_path))
+    
+    
+if not os.path.exists(saved_models_path):
+    os.makedirs(saved_models_path)
+    print("folder '{}' created ".format(saved_models_path))
+else:
+    print("folder {} already exists".format(saved_models_path))
+    
+if not os.path.exists(test_results_path):
+    os.makedirs(test_results_path)
+    print("folder '{}' created ".format(test_results_path))
+else:
+    print("folder {} already exists".format(test_results_path))
+    
+
+
+# os.mkdir(experiment_path) 
+# print("Directory '% s' created" % experiment_path) 
 
 writer = SummaryWriter()
 #%% Grab paths to training images
@@ -55,13 +102,16 @@ writer = SummaryWriter()
 #train_data_path = '/media/surajb/Extreme SSD/marine_dataset_Jervis_2021/r20210407_061916_NG106_hyams_depth_gated_target/raw_targetless_imgs/alp/converted_images'
 
 
-# train_data_path = '/home/surajb/marine_anomaly_detection/dataset_split/train/data'
-# test_data_path = '/home/surajb/marine_anomaly_detection/dataset_split/test/data'
-# val_data_path = '/home/surajb/marine_anomaly_detection/dataset_split/val/data'
 
-train_data_path = '../dataset_split/train/data'
-test_data_path = '../dataset_split/test/data'
-val_data_path = '../dataset_split/val/data'
+# train_data_path = 'dataset_split/train/data'
+# test_data_path = 'dataset_split/test/data'
+# val_data_path = 'dataset_split/val/data'
+
+
+train_data_path = config['data_params']['train_data_path']
+test_data_path = config['data_params']['test_data_path']
+val_data_path = config['data_params']['val_data_path']
+
 
 # Empty list to store paths to images
 train_image_paths = []
@@ -158,7 +208,7 @@ def create_datasets(batch_size, train_image_paths = train_image_paths,test_image
 
 
 #%% Create datasets and dataloaders
-batch_size = PARAMS['batch_size']
+batch_size = config['data_params']['train_batch_size']
 JB_train_loader,JB_test_loader,JB_val_loader,JB_train_dataset,JB_test_dataset,JB_valid_dataset,raw_dataset,raw_loader = create_datasets(batch_size=batch_size)
 
 
@@ -248,10 +298,10 @@ from training_utils import EarlyStopping,write_list_to_file
 
 
 # Define params for training
-use_gpu = PARAMS['use_gpu']
-num_epochs = PARAMS['num_epochs']
-learning_rate = PARAMS['learning_rate']
-weight_decay = PARAMS['weight_decay']
+use_gpu = config['trainer_params']['use_gpu']
+num_epochs = config['trainer_params']['max_epochs']
+learning_rate = config['trainer_params']['LR']
+weight_decay = config['trainer_params']['weight_decay']
 device = torch.device("cuda" if use_gpu and torch.cuda.is_available() else "cpu")
 vae = vae.to(device)
 optimizer = torch.optim.Adam(params=vae.parameters(), lr=learning_rate, weight_decay=weight_decay)
@@ -430,8 +480,9 @@ for epoch in range(num_epochs):
        # torch.save(vae.state_dict(), model_dir+'checkpoint'+checkpoint_name+'.pt')
        val_loss_min = avg_val_loss
     
-       
-       
+# Save params from config file       
+run['parameters'] = config     
+
 ## TODO: change the name to something uniqe for each new model
 
 model_name = 'final_model.pt'
