@@ -135,7 +135,7 @@ val_image_paths = list(val_image_paths)
 
 
 # the dataset we created in Notebook 1 is copied in the helper file `data_load.py`
-from data_load import MarineBenthicDataset, visualize_output_loader,visualize_raw_data_loader, encoder_sample_output,visualize_vae_output
+from data_load import MarineBenthicDataset, visualize_output_loader,visualize_raw_data_loader, encoder_sample_output,visualize_vae_output,visualize_vae_output_eval
 # the transforms we defined in Notebook 1 are in the helper file `data_load.py`
 from data_load import create_datasets,RescaleCustom, RandomCropCustom, NormalizeNew, ToTensorCustom, RandomRotateCustom, RandomHorizontalFlip,RandomVerticalFlip,ColorJitter
 
@@ -147,7 +147,7 @@ from data_load import create_datasets,RescaleCustom, RandomCropCustom, Normalize
 train_transform = transforms.Compose([RescaleCustom(64), ToTensorCustom(),RandomHorizontalFlip(),RandomVerticalFlip()])
 valid_transform = transforms.Compose([RescaleCustom(64),ToTensorCustom()])
 
-test_transform  = transforms.Compose([ToTensorCustom()])
+test_transform  = transforms.Compose([RescaleCustom(64),ToTensorCustom()])
 
 
 
@@ -396,7 +396,7 @@ for epoch in range(num_epochs):
        checkpoint_name = str(epoch+1) 
        print('Validation loss decreased ({:.6f} --> {:.6f}).  Saving model ...'.format(val_loss_min,avg_val_loss))
        torch.save(vae.state_dict(), saved_models_path +'/' +'checkpoint'+checkpoint_name+'.pt')
-       best_model = 'checkpoint'+checkpoint_name+'.pt'
+       best_model_name = 'checkpoint'+checkpoint_name+'.pt'
        val_loss_min = avg_val_loss
     
 # # Save params from config file       
@@ -408,18 +408,124 @@ write_list_to_file(val_loss_over_time, training_log_path+ '/'+ 'Validation_Loss.
                         
 
 print('Finished training')
-print('model with lowest validation loss: checkpoint',checkpoint_name)
 
-
-print('cleaned up workspace')
 
    
 
 
 
 
-#%%
+#%% Evaluate trained model
 
+plt.figure()
+
+
+plt.plot(val_loss_over_time,label='Validation loss')
+plt.plot(train_loss_over_time,label='Training loss')
+plt.legend()
+plt.grid()
+
+print('model with lowest validation loss: checkpoint',best_model_name)
+
+
+print('cleaned up workspace')
+
+#%%
+best_model = VariationalAutoencoder()
+# Change vae params according to config file
+best_model.encoder.fc_mu.out_features = config['model_params']['latent_dim']
+best_model.encoder.fc_logvar.out_features = config['model_params']['latent_dim']
+best_model.decoder.fc6.in_features = config['model_params']['latent_dim']
+
+best_model.load_state_dict(torch.load(saved_models_path+'/'+ best_model_name,map_location=('cpu')))
+
+print(best_model)
+#%% Evaluate loss of trained model on test and train datasets
+best_model.eval()
+
+train_test_loss_over_time = []
+train_test_recon_loss_over_time = []
+train_test_kl_loss_over_time = []
+
+
+
+test_loss_over_time = []
+test_recon_loss_over_time = []
+test_kl_loss_over_time = []
+
+for test_idx,test_sample in JB_test_dataset:
+    test_sample_name = test_sample['name']
+    
+    test_sample_image = test_sample['image']
+    
+    
+    test_sample_image = torch.unsqueeze(test_sample_image,0)
+    
+    # # # forward pass the images through the network
+
+    test_sample_image_recon,test_sample_mu_z,test_sample_log_var_z = best_model(test_sample_image)
+            
+    # Calculate loss
+    test_sample_total_loss,test_sample_recon_loss,test_sample_kl_loss = vae_loss(test_sample_image_recon, test_sample_image, test_sample_mu_z, test_sample_log_var_z,variational_beta)
+    
+    test_sample_eval_data = {'index':test_idx,'name':test_sample_name,'image':test_sample_image,'image_recon':test_sample_image_recon,'loss':test_sample_total_loss.item()}
+    
+    test_loss_over_time.append(test_sample_total_loss.item())
+    test_recon_loss_over_time.append(test_sample_recon_loss.item())
+    test_kl_loss_over_time.append(test_sample_kl_loss.item())
+
+for sample in JB_train_dataset:
+    train_sample_name = sample['name']
+    
+    train_sample_image = sample['image']
+    
+    
+    train_sample_image = torch.unsqueeze(train_sample_image,0)
+    
+    # # # forward pass the images through the network
+
+    train_sample_image_recon,train_sample_mu_z,train_sample_log_var_z = best_model(train_sample_image)
+            
+    # Calculate loss
+    train_sample_total_loss,train_sample_recon_loss,train_sample_kl_loss = vae_loss(train_sample_image_recon, train_sample_image, train_sample_mu_z, train_sample_log_var_z,variational_beta)
+    
+    train_test_loss_over_time.append(train_sample_total_loss.item())
+    train_test_recon_loss_over_time.append(train_sample_recon_loss.item())
+    train_test_kl_loss_over_time.append(train_sample_kl_loss.item())
+    
+
+# write evaluation results to file
+write_list_to_file(train_test_loss_over_time, test_results_path+ '/'+ 'Train_loss_eval.csv')
+write_list_to_file(test_loss_over_time, test_results_path+ '/'+ 'Test_loss_eval.csv')  
+
+#%% Plot evaluation results    
+plt.figure()
+plt.title('Loss on test dataset')
+plt.plot(test_loss_over_time,label='Total loss')
+plt.plot(test_recon_loss_over_time,label='reconstruction loss')
+plt.plot(test_kl_loss_over_time,label='kl loss')
+
+plt.legend()
+plt.grid()
+
+plt.figure()
+plt.title('Loss on train dataset')
+plt.plot(train_test_loss_over_time,label='Total loss')
+plt.plot(train_test_recon_loss_over_time,label='reconstruction loss')
+plt.plot(train_test_kl_loss_over_time,label='kl loss')
+
+plt.legend()
+plt.grid()
+
+
+binwidth=500
+plt.figure()
+plt.title('loss distributions')
+plt.hist(train_test_loss_over_time,density=True, alpha=0.5, bins=np.arange(min(train_test_loss_over_time), max(train_test_loss_over_time) + binwidth, binwidth),label='training dataset')
+plt.hist(test_loss_over_time,density=True, alpha=0.5, bins=np.arange(min(test_loss_over_time), max(test_loss_over_time) + binwidth, binwidth),label='test dataset')
+
+plt.legend()
+plt.grid()
 
 
 #[CONTINUE FROM HERE]
