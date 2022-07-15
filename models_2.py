@@ -12,6 +12,9 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+
+
+
 '''Parameter Settings
 -------------------
 '''
@@ -23,11 +26,13 @@ import torch.nn.functional as F
 #was encountered here: https://stackoverflow.com/questions/63976757/vae-reconstructed-images-are-extremely-blurry
 # solutions may include increasing the number of latent dimensions or in gradually converging to the bottleneck. In that case, perhaps something to look at
 # would be something like t-SNE to visualize high-dimensional latent space. The effect of latent dimensions are reiterated by Ava Soleimany in the MIT deep learning youtube lecture (https://www.youtube.com/watch?v=rZufA635dq4)
+# latent_dims = Main.config['model_params']['latent_dim'] # was hardcoded 256 previously
 latent_dims = 256
-
 capacity = 64
 
-variational_beta = 1
+# variational_beta = Main.config['model_params']['kld_weight']
+
+# variational_beta = 1.0
 
 ''' Some ideas for the number of layers and hyperparams may be taken from https://github.com/AntixK/PyTorch-VAE
 
@@ -167,7 +172,7 @@ class VariationalAutoencoder(nn.Module):
 # are consistent (https://sebastianraschka.com/pdf/lecture-notes/stat453ss21/L17_vae__slides.pdf)            
         
         
-def vae_loss(recon_x, x, mu, logvar):
+def vae_loss(recon_x, x, mu, logvar,variational_beta):
     # recon_x is the probability of a multivariate Bernoulli distribution p.
     # -log(p(x)) is then the pixel-wise binary cross-entropy.
     # Averaging or not averaging the binary cross-entropy over all pixels here

@@ -631,6 +631,46 @@ def visualize_vae_output_eval(orig_image,recon_image,total_loss,recon_loss,kl_lo
     axs[0].imshow(orig_plot)
     axs[1].imshow(recon_plot)
         
-    
-    
     plt.show()
+    
+
+def create_datasets(batch_size, train_image_paths,test_image_paths,val_image_paths,train_transform,test_transform,valid_transform):
+
+    #Raw dataset
+    raw_dataset = MarineBenthicDataset(train_image_paths)
+                    
+    # create datasets for training, validation and testing. 
+    test_dataset = MarineBenthicDataset(test_image_paths,transform=test_transform)
+
+    # create new training dataset for each epoch
+    train_dataset = MarineBenthicDataset(train_image_paths,transform=train_transform)
+    
+    # create new valid dataset for each epoch
+    valid_dataset = MarineBenthicDataset(val_image_paths,transform=valid_transform)
+            
+        
+      
+    
+    # load training data in batches
+    train_loader = DataLoader(train_dataset, 
+                              batch_size=batch_size,
+                              shuffle=True, 
+                              num_workers=0)
+    
+    # load validation data in batches
+    valid_loader = DataLoader(valid_dataset,batch_size=batch_size,shuffle=True,num_workers=0)
+    
+    # load test data in batches
+    test_loader = DataLoader(test_dataset, 
+                             batch_size=batch_size,
+                             shuffle=True,  
+                             num_workers=0)
+    
+    raw_loader = DataLoader(raw_dataset, 
+                             batch_size=batch_size,
+                             shuffle=True,  
+                             num_workers=0)
+    
+    return train_loader, test_loader, valid_loader,train_dataset,test_dataset,valid_dataset,raw_dataset,raw_loader
+
+

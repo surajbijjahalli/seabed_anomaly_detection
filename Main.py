@@ -53,17 +53,7 @@ def load_config(config_name):
 
 config = load_config("baseline.yaml")
 
-#print(config)
-
-
-# # Define parameters
-# PARAMS = {'batch_size': 32,
-#          'momentum': 0.5,
-#          'learning_rate': 1e-3,
-#          'weight_decay':1e-5,
-#          'optimizer': 'Adam',
-#          'use_gpu': True,
-#          'num_epochs':100 }
+model_name = config['model_params']['model_name']
 
 output_path = config['experiment_params']['output_path']
 experiment_name = config['experiment_params']['experiment_name']
@@ -147,7 +137,7 @@ val_image_paths = list(val_image_paths)
 # the dataset we created in Notebook 1 is copied in the helper file `data_load.py`
 from data_load import MarineBenthicDataset, visualize_output_loader,visualize_raw_data_loader, encoder_sample_output,visualize_vae_output
 # the transforms we defined in Notebook 1 are in the helper file `data_load.py`
-from data_load import RescaleCustom, RandomCropCustom, NormalizeNew, ToTensorCustom, RandomRotateCustom, RandomHorizontalFlip,RandomVerticalFlip,ColorJitter
+from data_load import create_datasets,RescaleCustom, RandomCropCustom, NormalizeNew, ToTensorCustom, RandomRotateCustom, RandomHorizontalFlip,RandomVerticalFlip,ColorJitter
 
 
 # Define data transforms for training, validation and testing 
@@ -161,58 +151,12 @@ test_transform  = transforms.Compose([ToTensorCustom()])
 
 
 
-#%% Define function for creating dataset and dataloaders
-
-def create_datasets(batch_size, train_image_paths = train_image_paths,test_image_paths=test_image_paths,val_image_paths=val_image_paths,
-                    train_transform=train_transform,test_transform=test_transform,valid_transform=valid_transform):
-
-    #Raw dataset
-    raw_dataset = MarineBenthicDataset(train_image_paths)
-                    
-    # create datasets for training, validation and testing. 
-    test_dataset = MarineBenthicDataset(test_image_paths,transform=test_transform)
-
-    # create new training dataset for each epoch
-    train_dataset = MarineBenthicDataset(train_image_paths,transform=train_transform)
-    
-    # create new valid dataset for each epoch
-    valid_dataset = MarineBenthicDataset(val_image_paths,transform=valid_transform)
-            
-        
-      
-    
-    # load training data in batches
-    train_loader = DataLoader(train_dataset, 
-                              batch_size=batch_size,
-                              shuffle=True, 
-                              num_workers=0)
-    
-    # load validation data in batches
-    valid_loader = DataLoader(valid_dataset,batch_size=batch_size,shuffle=True,num_workers=0)
-    
-    # load test data in batches
-    test_loader = DataLoader(test_dataset, 
-                             batch_size=batch_size,
-                             shuffle=True,  
-                             num_workers=0)
-    
-    raw_loader = DataLoader(raw_dataset, 
-                             batch_size=batch_size,
-                             shuffle=True,  
-                             num_workers=0)
-    
-    return train_loader, test_loader, valid_loader,train_dataset,test_dataset,valid_dataset,raw_dataset,raw_loader
-
-
-
 
 
 #%% Create datasets and dataloaders
 batch_size = config['data_params']['train_batch_size']
-JB_train_loader,JB_test_loader,JB_val_loader,JB_train_dataset,JB_test_dataset,JB_valid_dataset,raw_dataset,raw_loader = create_datasets(batch_size=batch_size)
-
-
-
+JB_train_loader,JB_test_loader,JB_val_loader,JB_train_dataset,JB_test_dataset,JB_valid_dataset,raw_dataset,raw_loader = create_datasets(batch_size=batch_size, train_image_paths = train_image_paths,test_image_paths=test_image_paths,val_image_paths=val_image_paths,
+                    train_transform=train_transform,test_transform=test_transform,valid_transform=valid_transform)
 
 # print some stats about the dataset
 print('Length of training dataset: ', len(JB_train_dataset))
@@ -237,7 +181,15 @@ from models_2 import VariationalAutoencoder,vae_loss
 
 
 vae = VariationalAutoencoder()
-print(vae)
+
+# Change vae params according to config file
+vae.encoder.fc_mu.out_features = config['model_params']['latent_dim']
+vae.encoder.fc_logvar.out_features = config['model_params']['latent_dim']
+vae.decoder.fc6.in_features = config['model_params']['latent_dim']
+
+variational_beta = config['model_params']['kld_weight']
+
+
 
 # %% Initialize weights
 
@@ -276,7 +228,7 @@ init_weights(vae.decoder.conv12)
 num_params = sum(p.numel() for p in vae.parameters() if p.requires_grad)
 
 print(vae)
-print('Number of parameters: %d' % num_params)
+
 
 
 # Pass a batch of images from the train loader through the model before training
@@ -316,7 +268,7 @@ plateau_lr_scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, 'mi
 
 
 num_params = sum(p.numel() for p in vae.parameters() if p.requires_grad)
-print('Number of trainable parameters: %d' % num_params)    
+   
 
 # samp_images = next(iter(JB_train_loader))['image']
 # writer.add_graph(vae, samp_images)
@@ -340,7 +292,7 @@ def validation_loss(valid_loader, vae):  # pass in validation loader and the mod
         images_recon, latent_mu, latent_logvar = vae(images)
         
         # calculate the loss 
-        loss,recon_val_loss,kl_val_loss = vae_loss(images_recon, images, latent_mu, latent_logvar)
+        loss,recon_val_loss,kl_val_loss = vae_loss(images_recon, images, latent_mu, latent_logvar,variational_beta)
         running_loss += loss.item()
     avg_loss = running_loss/(i+1)
     vae.train()
@@ -361,9 +313,10 @@ early_stopping = EarlyStopping()
 learning_rate_list = [] # to track learning rate when a scheduler is used
 vae.train()
 
-#Directory to save checkpoint and final models 
+print('Running experiment: %s ' % experiment_name +'on model %s' % model_name) 
+print('Number of trainable parameters: %d' % num_params) 
 
-model_dir = 'saved_models/'
+
 
 for epoch in range(num_epochs):
     running_train_loss = 0.0
@@ -390,7 +343,7 @@ for epoch in range(num_epochs):
         image_recon,mu_z,log_var_z = vae(images)
         
         # Calculate loss
-        loss,recon_train_loss,kl_train_loss = vae_loss(image_recon, images, mu_z, log_var_z)
+        loss,recon_train_loss,kl_train_loss = vae_loss(image_recon, images, mu_z, log_var_z,variational_beta)
         
        # zero the parameter (weight) gradients
         optimizer.zero_grad()
@@ -419,9 +372,7 @@ for epoch in range(num_epochs):
     avg_train_recon_loss = running_train_recon_loss/len(JB_train_loader)
     avg_train_kl_loss = running_train_kl_loss/len(JB_train_loader)
     
-    # creating a logging object so that you can track it on Neptune dashboard
-    run['metrics/train_loss'].log(avg_train_loss)
-    run['metrics/val_loss'].log(avg_val_loss)
+    
         
     train_loss_over_time.append(avg_train_loss)
     val_loss_over_time.append(avg_val_loss)
@@ -430,73 +381,45 @@ for epoch in range(num_epochs):
     learning_rate_over_time = optimizer.state_dict()['param_groups'][0]['lr']
     learning_rate_list.append(learning_rate_over_time)
     
-    # export figure to neptune - this blog post is the correct way to do it: https://towardsdatascience.com/a-quick-guide-for-tracking-pytorch-experiments-using-neptune-ai-6321e4b6040f
-    # run["predictions/{}".format(epoch)].upload(File.as_image(fig_export))
-    run["predictions/recon_imgs"].upload(File.as_image(fig_export))
+    # #export loss metrics and image sample reconstructions to Neptune
+    # run['metrics/train_loss'].log(avg_train_loss)
+    # run['metrics/val_loss'].log(avg_val_loss)
+    # run["predictions/recon_imgs"].upload(File.as_image(fig_export))
     
-    print('Epoch:', epoch + 1, 'Avg. Training Loss:',avg_train_loss, 'Avg. Validation Loss:',avg_val_loss)
-    print('Epoch:', epoch + 1,  'Avg. reconstruction training Loss:',avg_train_recon_loss, 'Avg. reconstruction kl Loss:',avg_train_kl_loss)
+    print('Epoch:', epoch + 1,'/',num_epochs, 'Avg. Training Loss:',avg_train_loss, 'Avg. Validation Loss:',avg_val_loss)
+    print('Epoch:', epoch + 1,'/',num_epochs, 'Avg. reconstruction training Loss:',avg_train_recon_loss, 'Avg. reconstruction kl Loss:',avg_train_kl_loss)
     
-    writer.add_scalars('Training vs. Validation Loss', { 'Training' : avg_train_loss, 'Validation' : avg_val_loss },epoch+1)  
-    writer.add_scalars('Learning rate', {'learning rate':learning_rate_over_time},epoch+1)  
-        # # The below lines print every 10 mini-batches. Uncomment if you want more
-        # # frequent printing to display of the losses
-        # if batch_i % 10 == 9 or batch_i == 0:    # print every 10 batches
-        #     if batch_i == 0:
-        #         avg_train_loss = running_train_loss
-        #         avg_train_recon_loss = running_train_recon_loss
-        #         avg_train_kl_loss = running_train_kl_loss
-        #     else:
-        #         avg_train_loss = running_train_loss/10
-        #         avg_train_recon_loss = running_train_recon_loss/10
-        #         avg_train_kl_loss = running_train_kl_loss/10
-                
-        #         avg_val_loss = validation_loss(JB_val_loader, vae)
-        #         train_loss_over_time.append(avg_train_loss)
-        #         val_loss_over_time.append(avg_val_loss)
-        #         print('Epoch:', epoch + 1, 'Batch:',batch_i+1, 'Avg. Training Loss:',avg_train_loss, 'Avg. Validation Loss:',avg_val_loss)
-        #         print('Epoch:', epoch + 1, 'Batch:',batch_i+1, 'Avg. reconstruction training Loss:',avg_train_recon_loss, 'Avg. reconstruction kl Loss:',avg_train_kl_loss)
-                
-        #         running_train_loss = 0.0
-        #         running_train_recon_loss=0.0
-        #         running_train_kl_loss = 0.0
-                
-        #         writer.add_scalars('Training vs. Validation Loss', { 'Training' : avg_train_loss, 'Validation' : avg_val_loss },epoch * len(JB_train_loader) + batch_i)
-        #        # writer.add_scalars({ 'Training' : avg_train_loss, 'Validation' : avg_val_loss })
-        #         #writer.add_scalars('Training', {'loss':avg_train_loss},epoch * len(JB_train_loader) + batch_i) 
-        #         writer.add_scalars('Validation', {'loss':avg_val_loss},epoch * len(JB_train_loader) + batch_i)
-        #         writer.add_scalars('Reconstruction', {'loss':avg_train_recon_loss},epoch * len(JB_train_loader) + batch_i)
-        #         writer.add_scalars('KL divergence', {'loss':avg_train_kl_loss},epoch * len(JB_train_loader) + batch_i)
-                
-                
-               
-    # reduce learning rate when avg_val_loss has stopped improving. Here avg_val_loss is used as a metric to trigger reduction in learning rate.
-    # plateau_lr_scheduler.step(avg_val_loss)
+    
     
     # save model if validation loss has decreased
     if avg_val_loss <= val_loss_min:
        checkpoint_name = str(epoch+1) 
        print('Validation loss decreased ({:.6f} --> {:.6f}).  Saving model ...'.format(val_loss_min,avg_val_loss))
-       # torch.save(vae.state_dict(), model_dir+'checkpoint'+checkpoint_name+'.pt')
+       torch.save(vae.state_dict(), saved_models_path +'/' +'checkpoint'+checkpoint_name+'.pt')
+       best_model = 'checkpoint'+checkpoint_name+'.pt'
        val_loss_min = avg_val_loss
     
-# Save params from config file       
-run['parameters'] = config     
+# # Save params from config file       
+# run['parameters'] = config     
 
-## TODO: change the name to something uniqe for each new model
+# write loss curves to file
+write_list_to_file(train_loss_over_time, training_log_path+ '/'+ 'Training_Loss.csv')
+write_list_to_file(val_loss_over_time, training_log_path+ '/'+ 'Validation_Loss.csv')   
+                        
 
-model_name = 'final_model.pt'
+print('Finished training')
+print('model with lowest validation loss: checkpoint',checkpoint_name)
 
-# after training, save your model parameters in the dir 'saved_models'
-torch.save(vae.state_dict(), model_dir+model_name)    
+
+print('cleaned up workspace')
+
+   
 
 
 
 
 #%%
-write_list_to_file(train_loss_over_time,  model_name + 'Training_Loss.csv')
-write_list_to_file(val_loss_over_time, model_name + 'Validation_Loss.csv')   
-                        
+
 
 
 #[CONTINUE FROM HERE]
