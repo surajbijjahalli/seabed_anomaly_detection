@@ -483,7 +483,7 @@ def visualize_output_loader(data_loader,batch_plot_size=10):
         plt.title(ImgPlotName,fontsize = 8)
         # plt.axis('off')
 
-    plt.show()
+    plt.show(block=False)
     
 def visualize_raw_data_loader(data_loader,batch_plot_size=10):
     plt.figure(figsize=(20,8))
@@ -508,7 +508,7 @@ def visualize_raw_data_loader(data_loader,batch_plot_size=10):
         plt.title(ImgPlotName,fontsize = 8)
         # plt.axis('off')
 
-    plt.show()    
+    plt.show(block=False)    
     
     
     
@@ -527,11 +527,11 @@ def encoder_sample_output(vae,data_loader):
         # forward pass to get net output-original
         #encode_vector = vae(images)
 
-        x_recon, latent_mu, latent_logvar = vae(images)
+        x_recon,latent_z,latent_mu, latent_logvar = vae(images)
         
         # break after first image is tested
         if i == 0:
-            return images,name,x_recon,latent_mu,latent_logvar
+            return images,name,x_recon,latent_z,latent_mu,latent_logvar
         
 def visualize_vae_output(orig_image,recon_image):
     
@@ -582,7 +582,7 @@ def visualize_vae_output(orig_image,recon_image):
         axs[1,i].imshow(recon_plot[:,:,:,i])
     
     
-    plt.show()
+    plt.show(block=False)
     return fig
     
 def visualize_vae_output_eval(orig_image,recon_image,total_loss,recon_loss,kl_loss):
@@ -631,7 +631,7 @@ def visualize_vae_output_eval(orig_image,recon_image,total_loss,recon_loss,kl_lo
     axs[0].imshow(orig_plot)
     axs[1].imshow(recon_plot)
         
-    plt.show()
+    plt.show(block=False)
     
 
 def create_datasets(batch_size, train_image_paths,test_image_paths,val_image_paths,train_transform,test_transform,valid_transform):

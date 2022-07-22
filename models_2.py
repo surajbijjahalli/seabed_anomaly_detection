@@ -157,7 +157,8 @@ class VariationalAutoencoder(nn.Module):
         latent_mu, latent_logvar = self.encoder(x)
         latent = self.latent_sample(latent_mu, latent_logvar) #sample the latent vector z
         x_recon = self.decoder(latent) # pass the sampled latent vector z to the decoder
-        return x_recon, latent_mu, latent_logvar
+        # return x_recon, latent_mu, latent_logvar #was this previously
+        return x_recon,latent,latent_mu,latent_logvar #also return latent sample
     
     def latent_sample(self, mu, logvar):
         if self.training:
