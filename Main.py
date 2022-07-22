@@ -58,10 +58,10 @@ config_file_name = args.Filename
 
 
 
-# # Create neptune run object for logging metrics and metadata
-# # NEPTUNE_API_TOKEN = "<api-token-here>"
-# run = neptune.init(project='surajbijjahalli/marine-anomaly-detection',
-#                    api_token='eyJhcGlfYWRkcmVzcyI6Imh0dHBzOi8vYXBwLm5lcHR1bmUuYWkiLCJhcGlfdXJsIjoiaHR0cHM6Ly9hcHAubmVwdHVuZS5haSIsImFwaV9rZXkiOiIzMGRhZjQzOS1mMTE2LTQ3NzUtYWEwYS1hNDg0ZDAxOTVhZTgifQ==')
+# Create neptune run object for logging metrics and metadata
+# NEPTUNE_API_TOKEN = "<api-token-here>"
+run = neptune.init(project='surajbijjahalli/marine-anomaly-detection',
+                    api_token='eyJhcGlfYWRkcmVzcyI6Imh0dHBzOi8vYXBwLm5lcHR1bmUuYWkiLCJhcGlfdXJsIjoiaHR0cHM6Ly9hcHAubmVwdHVuZS5haSIsImFwaV9rZXkiOiIzMGRhZjQzOS1mMTE2LTQ3NzUtYWEwYS1hNDg0ZDAxOTVhZTgifQ==')
 
 # folder to load config file
 CONFIG_PATH = "config/"
@@ -406,10 +406,10 @@ for epoch in range(num_epochs):
     learning_rate_over_time = optimizer.state_dict()['param_groups'][0]['lr']
     learning_rate_list.append(learning_rate_over_time)
     
-    # #export loss metrics and image sample reconstructions to Neptune
-    # run['metrics/train_loss'].log(avg_train_loss)
-    # run['metrics/val_loss'].log(avg_val_loss)
-    # run["predictions/recon_imgs"].upload(File.as_image(fig_export))
+    #export loss metrics and image sample reconstructions to Neptune
+    run['metrics/train_loss'].log(avg_train_loss)
+    run['metrics/val_loss'].log(avg_val_loss)
+    run["predictions/recon_imgs"].upload(File.as_image(fig_export))
     
     print('Epoch:', epoch + 1,'/',num_epochs, 'Avg. Training Loss:',avg_train_loss, 'Avg. Validation Loss:',avg_val_loss)
     print('Epoch:', epoch + 1,'/',num_epochs, 'Avg. reconstruction training Loss:',avg_train_recon_loss, 'Avg. reconstruction kl Loss:',avg_train_kl_loss)
@@ -424,8 +424,8 @@ for epoch in range(num_epochs):
        best_model_name = 'checkpoint'+checkpoint_name+'.pt'
        val_loss_min = avg_val_loss
     
-# # Save params from config file       
-# run['parameters'] = config     
+# Save params from config file       
+run['parameters'] = config     
 
 # write loss curves to file
 write_list_to_file(train_loss_over_time, training_log_path+ '/'+ 'Training_Loss.csv')
