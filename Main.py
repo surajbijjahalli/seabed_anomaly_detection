@@ -16,7 +16,7 @@ import matplotlib.pyplot as plt
 import matplotlib.image as mpimg
 from random import randint
 import os
-
+import argparse
 
 import torch
 import torch.nn as nn
@@ -35,6 +35,29 @@ from neptune.new.types import File
 
 import yaml
 
+## specify command line arguments to be supplied by user
+
+
+
+
+
+
+# Create the parser
+my_parser = argparse.ArgumentParser(description='train and test a model using a specified config file')
+
+# Add the arguments
+my_parser.add_argument('Filename',
+                       metavar='filename',
+                       type=str,
+                       help='the name of the config file which specifies hyperparams')
+
+# Execute the parse_args() method
+args = my_parser.parse_args()
+
+config_file_name = args.Filename
+
+
+
 # # Create neptune run object for logging metrics and metadata
 # # NEPTUNE_API_TOKEN = "<api-token-here>"
 # run = neptune.init(project='surajbijjahalli/marine-anomaly-detection',
@@ -51,7 +74,9 @@ def load_config(config_name):
     return config
 
 
-config = load_config("baseline.yaml")
+#config = load_config("baseline.yaml")
+config = load_config(config_file_name)
+
 
 model_name = config['model_params']['model_name']
 
@@ -233,7 +258,7 @@ print(vae)
 
 # Pass a batch of images from the train loader through the model before training
        
-orig_image_sample,orig_image_sample_name,recon_image_sample,latent_mu_sample,latent_logvar_sample = encoder_sample_output(vae,JB_train_loader)
+orig_image_sample,orig_image_sample_name,recon_image_sample,latent_sample_vector,latent_mu_sample,latent_logvar_sample = encoder_sample_output(vae,JB_train_loader)
 
 # Visualize output from VAE
 
@@ -289,7 +314,7 @@ def validation_loss(valid_loader, vae):  # pass in validation loader and the mod
         images = images.type(torch.FloatTensor)
         images = images.to(device)
         # forward pass to get net output
-        images_recon, latent_mu, latent_logvar = vae(images)
+        images_recon,latent_z, latent_mu, latent_logvar = vae(images)
         
         # calculate the loss 
         loss,recon_val_loss,kl_val_loss = vae_loss(images_recon, images, latent_mu, latent_logvar,variational_beta)
@@ -340,7 +365,7 @@ for epoch in range(num_epochs):
         
         # forward pass the images through the network
         
-        image_recon,mu_z,log_var_z = vae(images)
+        image_recon,latent_sample_z,mu_z,log_var_z = vae(images)
         
         # Calculate loss
         loss,recon_train_loss,kl_train_loss = vae_loss(image_recon, images, mu_z, log_var_z,variational_beta)
@@ -453,7 +478,7 @@ test_loss_over_time = []
 test_recon_loss_over_time = []
 test_kl_loss_over_time = []
 
-for test_idx,test_sample in JB_test_dataset:
+for test_sample in JB_test_dataset:
     test_sample_name = test_sample['name']
     
     test_sample_image = test_sample['image']
@@ -463,12 +488,11 @@ for test_idx,test_sample in JB_test_dataset:
     
     # # # forward pass the images through the network
 
-    test_sample_image_recon,test_sample_mu_z,test_sample_log_var_z = best_model(test_sample_image)
+    test_sample_image_recon,test_sample_z_vector,test_sample_mu_z,test_sample_log_var_z = best_model(test_sample_image)
             
     # Calculate loss
     test_sample_total_loss,test_sample_recon_loss,test_sample_kl_loss = vae_loss(test_sample_image_recon, test_sample_image, test_sample_mu_z, test_sample_log_var_z,variational_beta)
     
-    test_sample_eval_data = {'index':test_idx,'name':test_sample_name,'image':test_sample_image,'image_recon':test_sample_image_recon,'loss':test_sample_total_loss.item()}
     
     test_loss_over_time.append(test_sample_total_loss.item())
     test_recon_loss_over_time.append(test_sample_recon_loss.item())
@@ -484,7 +508,7 @@ for sample in JB_train_dataset:
     
     # # # forward pass the images through the network
 
-    train_sample_image_recon,train_sample_mu_z,train_sample_log_var_z = best_model(train_sample_image)
+    train_sample_image_recon,train_sample_z_vector,train_sample_mu_z,train_sample_log_var_z = best_model(train_sample_image)
             
     # Calculate loss
     train_sample_total_loss,train_sample_recon_loss,train_sample_kl_loss = vae_loss(train_sample_image_recon, train_sample_image, train_sample_mu_z, train_sample_log_var_z,variational_beta)
@@ -498,7 +522,6 @@ for sample in JB_train_dataset:
 write_list_to_file(train_test_loss_over_time, test_results_path+ '/'+ 'Train_loss_eval.csv')
 write_list_to_file(test_loss_over_time, test_results_path+ '/'+ 'Test_loss_eval.csv')  
 
-#%% Plot evaluation results    
 plt.figure()
 plt.title('Loss on test dataset')
 plt.plot(test_loss_over_time,label='Total loss')
