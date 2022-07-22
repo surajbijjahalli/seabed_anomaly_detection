@@ -21,7 +21,7 @@ data_params:
 
 trainer_params:
   use_gpu: True
-  max_epochs: 2
+  max_epochs: 100
   LR: 0.001
   weight_decay: 0.00001
   

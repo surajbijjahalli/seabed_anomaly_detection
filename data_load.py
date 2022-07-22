@@ -554,11 +554,11 @@ def visualize_vae_output(orig_image,recon_image):
     orig_plot = unnorm_transform(orig_image)
     recon_plot = unnorm_transform(recon_image)
     
-    orig_plot = orig_plot.detach().numpy()
+    orig_plot = orig_plot.detach().cpu().numpy()
     # orig_plot = orig_image.numpy()
     orig_plot = np.transpose(orig_plot,(2,3,1,0))
     
-    recon_plot = recon_plot.detach().numpy()
+    recon_plot = recon_plot.detach().cpu().numpy()
     # recon_plot = recon_image.numpy()
     recon_plot = np.transpose(recon_plot,(2,3,1,0))
     
@@ -606,13 +606,13 @@ def visualize_vae_output_eval(orig_image,recon_image,total_loss,recon_loss,kl_lo
     orig_plot = unnorm_transform(orig_image)
     recon_plot = unnorm_transform(recon_image)
     
-    orig_plot = orig_plot.detach().numpy()
+    orig_plot = orig_plot.detach().cpu().numpy()
     # orig_plot = orig_image.numpy()
     orig_plot = np.transpose(orig_plot,(2,3,1,0))
     
     orig_plot = np.squeeze(orig_plot,axis=3)
     
-    recon_plot = recon_plot.detach().numpy()
+    recon_plot = recon_plot.detach().cpu().numpy()
     # recon_plot = recon_image.numpy()
     recon_plot = np.transpose(recon_plot,(2,3,1,0))
     recon_plot = np.squeeze(recon_plot,axis=3)
