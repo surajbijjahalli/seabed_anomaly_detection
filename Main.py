@@ -154,7 +154,7 @@ for data_path in glob.glob(val_data_path + '/*'):
     val_image_paths.append(data_path)
     
 val_image_paths = list(val_image_paths)
-# THIS IS WRONG - SHOULD BE VAL IMAGE PATHS
+
 
 #%% Import custom classes and define transform
 
@@ -542,15 +542,23 @@ plt.grid()
 
 
 binwidth=500
-plt.figure()
+loss_distb_fig = plt.figure()
 plt.title('loss distributions')
 plt.hist(train_test_loss_over_time,density=True, alpha=0.5, bins=np.arange(min(train_test_loss_over_time), max(train_test_loss_over_time) + binwidth, binwidth),label='training dataset')
 plt.hist(test_loss_over_time,density=True, alpha=0.5, bins=np.arange(min(test_loss_over_time), max(test_loss_over_time) + binwidth, binwidth),label='test dataset')
-
 plt.legend()
 plt.grid()
 
 
+
+test_eval_images_export = visualize_vae_output_eval(test_sample_image, test_sample_image_recon,test_sample_total_loss,test_sample_recon_loss,test_sample_kl_loss)
+
+train_eval_images_export = visualize_vae_output_eval(train_sample_image, train_sample_image_recon,train_sample_total_loss,train_sample_recon_loss,train_sample_kl_loss)
+
+
+run["predictions/test_eval_recon_imgs"].upload(File.as_image(test_eval_images_export))
+run["predictions/train_eval_recon_imgs"].upload(File.as_image(train_eval_images_export))
+run["metrics/loss_distb"].upload(File.as_image(loss_distb_fig))
 #[CONTINUE FROM HERE]
 
 # Save this for later - tensorboard visualizations for autoencoders (https://uvadlc-notebooks.readthedocs.io/en/latest/tutorial_notebooks/tutorial9/AE_CIFAR10.html)  

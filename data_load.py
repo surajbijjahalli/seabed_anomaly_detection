@@ -627,12 +627,12 @@ def visualize_vae_output_eval(orig_image,recon_image,total_loss,recon_loss,kl_lo
     '''
     # fig,axs = plt.subplots(1,2,figsize=(10,10))
     fig,axs = plt.subplots(1,2)
-    # plt.suptitle('Total loss: %f,Recon loss: %f' %total_loss.item() %recon_loss.item())
+    plt.suptitle('Total loss: %f,Recon loss: %f' % (total_loss.item(),recon_loss.item()))
     axs[0].imshow(orig_plot)
     axs[1].imshow(recon_plot)
         
     plt.show(block=False)
-    
+    return fig
 
 def create_datasets(batch_size, train_image_paths,test_image_paths,val_image_paths,train_transform,test_transform,valid_transform):
 
