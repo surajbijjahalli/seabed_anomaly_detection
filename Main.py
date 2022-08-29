@@ -77,6 +77,8 @@ def load_config(config_name):
 #config = load_config("baseline.yaml")
 config = load_config(config_file_name)
 
+# export params from config file to Neptune    
+run['parameters'] = config 
 
 model_name = config['model_params']['model_name']
 
@@ -424,8 +426,7 @@ for epoch in range(num_epochs):
        best_model_name = 'checkpoint'+checkpoint_name+'.pt'
        val_loss_min = avg_val_loss
     
-# Save params from config file       
-run['parameters'] = config     
+    
 
 # write loss curves to file
 write_list_to_file(train_loss_over_time, training_log_path+ '/'+ 'Training_Loss.csv')
@@ -477,7 +478,7 @@ train_test_kl_loss_over_time = []
 test_loss_over_time = []
 test_recon_loss_over_time = []
 test_kl_loss_over_time = []
-
+latent_space_training_set = []
 for test_sample in JB_test_dataset:
     test_sample_name = test_sample['name']
     
@@ -510,18 +511,21 @@ for sample in JB_train_dataset:
 
     train_sample_image_recon,train_sample_z_vector,train_sample_mu_z,train_sample_log_var_z = best_model(train_sample_image)
             
+    
     # Calculate loss
     train_sample_total_loss,train_sample_recon_loss,train_sample_kl_loss = vae_loss(train_sample_image_recon, train_sample_image, train_sample_mu_z, train_sample_log_var_z,variational_beta)
     
     train_test_loss_over_time.append(train_sample_total_loss.item())
     train_test_recon_loss_over_time.append(train_sample_recon_loss.item())
     train_test_kl_loss_over_time.append(train_sample_kl_loss.item())
-    
+    latent_space_training_set.append(train_sample_mu_z.detach().numpy())
+    latent_space_array = np.squeeze(np.array(latent_space_training_set))
 
 # write evaluation results to file
 write_list_to_file(train_test_loss_over_time, test_results_path+ '/'+ 'Train_loss_eval.csv')
 write_list_to_file(test_loss_over_time, test_results_path+ '/'+ 'Test_loss_eval.csv')  
 
+#%% Plot eval metrics - evaluate reconstruction error on training and testing datasets
 plt.figure()
 plt.title('Loss on test dataset')
 plt.plot(test_loss_over_time,label='Total loss')
@@ -564,8 +568,51 @@ run["metrics/loss_distb"].upload(File.as_image(loss_distb_fig))
 # Save this for later - tensorboard visualizations for autoencoders (https://uvadlc-notebooks.readthedocs.io/en/latest/tutorial_notebooks/tutorial9/AE_CIFAR10.html)  
 
 
+#%% Dimensionality reduction
+'''
+from sklearn import manifold
+from numpy.random import RandomState
+
+import seaborn as sns
+
+rng = RandomState(0)
+t_sne = manifold.TSNE(
+    n_components=2,learning_rate=150,early_exaggeration=300,
+    perplexity=600,
+    n_iter=1000,
+    init="random",
+    random_state=rng)
+reduced_latent_space = t_sne.fit_transform(latent_space_array)
+scatterplot_figure = plt.figure()
+sns.scatterplot(reduced_latent_space[:,0],reduced_latent_space[:,1])
+plt.grid()
+plt.show()
+
+run["predictions/latent_space"].upload(File.as_image(scatterplot_figure)) 
+'''
+#%% Dimensionality reduction using OpentSNE
+
+from openTSNE import TSNE
+
+from  openTSNE import utils
+
+tsne = TSNE(
+    perplexity=30,exaggeration=4,
+    metric="euclidean",
+    n_jobs=8,
+    random_state=42,
+    verbose=True,
+)
+
+embedding = tsne.fit(latent_space_array)
+
+#utils.plot(embedding)
+
+import seaborn as sns
 
 
+scatterplot_figure = plt.figure()
+sns.scatterplot(embedding[:,0],embedding[:,1])
+plt.grid()
+plt.show()
 
-
- 
