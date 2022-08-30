@@ -463,7 +463,9 @@ best_model.encoder.fc_mu.out_features = config['model_params']['latent_dim']
 best_model.encoder.fc_logvar.out_features = config['model_params']['latent_dim']
 best_model.decoder.fc6.in_features = config['model_params']['latent_dim']
 
-best_model.load_state_dict(torch.load(saved_models_path+'/'+ best_model_name,map_location=('cpu')))
+#best_model.load_state_dict(torch.load(saved_models_path+'/'+ best_model_name,map_location=('cpu'))) # original mapped location is cpu
+
+best_model.load_state_dict(torch.load(saved_models_path+'/'+ best_model_name,map_location=device)) # new location is device
 
 print(best_model)
 #%% Evaluate loss of trained model on test and train datasets
@@ -569,7 +571,7 @@ run["metrics/loss_distb"].upload(File.as_image(loss_distb_fig))
 
 
 #%% Dimensionality reduction
-'''
+
 from sklearn import manifold
 from numpy.random import RandomState
 
@@ -577,11 +579,11 @@ import seaborn as sns
 
 rng = RandomState(0)
 t_sne = manifold.TSNE(
-    n_components=2,learning_rate=150,early_exaggeration=300,
-    perplexity=600,
+    n_components=2,learning_rate=150,early_exaggeration=100,verbose=1,
+    perplexity=100,
     n_iter=1000,
-    init="random",
-    random_state=rng)
+    init="pca",
+    random_state=42,metric="cosine")
 reduced_latent_space = t_sne.fit_transform(latent_space_array)
 scatterplot_figure = plt.figure()
 sns.scatterplot(reduced_latent_space[:,0],reduced_latent_space[:,1])
@@ -589,30 +591,30 @@ plt.grid()
 plt.show()
 
 run["predictions/latent_space"].upload(File.as_image(scatterplot_figure)) 
-'''
-#%% Dimensionality reduction using OpentSNE
 
-from openTSNE import TSNE
+# #%% Dimensionality reduction using OpentSNE
 
-from  openTSNE import utils
+# from openTSNE import TSNE
 
-tsne = TSNE(
-    perplexity=30,exaggeration=4,
-    metric="euclidean",
-    n_jobs=8,
-    random_state=42,
-    verbose=True,
-)
+# from  openTSNE import utils
 
-embedding = tsne.fit(latent_space_array)
+# tsne = TSNE(
+#     perplexity=30,exaggeration=4,
+#     metric="euclidean",
+#     n_jobs=8,
+#     random_state=42,
+#     verbose=True,
+# )
 
-#utils.plot(embedding)
+# embedding = tsne.fit(latent_space_array)
 
-import seaborn as sns
+# #utils.plot(embedding)
+
+# import seaborn as sns
 
 
-scatterplot_figure = plt.figure()
-sns.scatterplot(embedding[:,0],embedding[:,1])
-plt.grid()
-plt.show()
+# scatterplot_figure = plt.figure()
+# sns.scatterplot(embedding[:,0],embedding[:,1])
+# plt.grid()
+# plt.show()
 
