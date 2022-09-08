@@ -533,19 +533,18 @@ plt.title('Loss on test dataset')
 plt.plot(test_loss_over_time,label='Total loss')
 plt.plot(test_recon_loss_over_time,label='reconstruction loss')
 plt.plot(test_kl_loss_over_time,label='kl loss')
-
 plt.legend()
 plt.grid()
+plt.show(block=False)
 
 plt.figure()
 plt.title('Loss on train dataset')
 plt.plot(train_test_loss_over_time,label='Total loss')
 plt.plot(train_test_recon_loss_over_time,label='reconstruction loss')
 plt.plot(train_test_kl_loss_over_time,label='kl loss')
-
 plt.legend()
 plt.grid()
-
+plt.show(block=False)
 
 binwidth=500
 loss_distb_fig = plt.figure()
@@ -554,7 +553,7 @@ plt.hist(train_test_loss_over_time,density=True, alpha=0.5, bins=np.arange(min(t
 plt.hist(test_loss_over_time,density=True, alpha=0.5, bins=np.arange(min(test_loss_over_time), max(test_loss_over_time) + binwidth, binwidth),label='test dataset')
 plt.legend()
 plt.grid()
-
+plt.show(block=False)
 
 
 test_eval_images_export = visualize_vae_output_eval(test_sample_image, test_sample_image_recon,test_sample_total_loss,test_sample_recon_loss,test_sample_kl_loss)
@@ -579,18 +578,29 @@ import seaborn as sns
 
 rng = RandomState(0)
 t_sne = manifold.TSNE(
-    n_components=2,learning_rate=150,early_exaggeration=100,verbose=1,
-    perplexity=100,
+    n_components=2,learning_rate=200,verbose=1,
+    perplexity=30,
     n_iter=1000,
     init="pca",
-    random_state=42,metric="cosine")
+    random_state=24,metric="euclidean")
 reduced_latent_space = t_sne.fit_transform(latent_space_array)
 scatterplot_figure = plt.figure()
 sns.scatterplot(reduced_latent_space[:,0],reduced_latent_space[:,1])
 plt.grid()
-plt.show()
+plt.show(block=False)
 
 run["predictions/latent_space"].upload(File.as_image(scatterplot_figure)) 
+
+
+#plt.figure()
+#sns.scatterplot(reduced_latent_space[:,1],reduced_latent_space[:,2])
+#plt.grid()
+#plt.show()
+
+#plt.figure()
+#sns.scatterplot(reduced_latent_space[:,0],reduced_latent_space[:,2])
+#plt.grid()
+#plt.show()
 
 # #%% Dimensionality reduction using OpentSNE
 
@@ -618,3 +628,38 @@ run["predictions/latent_space"].upload(File.as_image(scatterplot_figure))
 # plt.grid()
 # plt.show()
 
+#%%PCA test
+
+from sklearn.decomposition import PCA
+
+pca = PCA(n_components=3)
+pca.fit(latent_space_array)
+
+pca_components = pca.components_.T*3
+plt.figure()
+sns.scatterplot(pca_components[:,0],pca_components[:,1])
+plt.grid()
+plt.show(block=False)
+
+plt.figure()
+sns.scatterplot(pca_components[:,1],pca_components[:,2])
+plt.grid()
+plt.show(block=False)
+
+plt.figure()
+sns.scatterplot(pca_components[:,0],pca_components[:,2])
+plt.grid()
+plt.show(block=False)
+
+pca_fig = plt.figure(1, figsize=(8, 6))
+ax = pca_fig.add_subplot(111, projection="3d", elev=-150, azim=110)
+
+ax.scatter3D(
+    pca_components[:, 0],
+    pca_components[:, 1],
+    pca_components[:, 2],
+    s=100)
+
+ax.view_init(45, 215)
+plt.show(block=False)
+run["predictions/pca_latent_space"].upload(File.as_image(pca_fig)) 
