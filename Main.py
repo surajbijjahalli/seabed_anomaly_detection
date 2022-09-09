@@ -715,17 +715,17 @@ pca.fit(latent_space_array)
 
 pca_components = pca.components_.T*3
 plt.figure()
-sns.scatterplot(pca_components[:,0],pca_components[:,1])
+plt.scatter(pca_components[:,0],pca_components[:,1])
 plt.grid()
 plt.show(block=False)
 
 plt.figure()
-sns.scatterplot(pca_components[:,1],pca_components[:,2])
+plt.scatter(pca_components[:,1],pca_components[:,2])
 plt.grid()
 plt.show(block=False)
 
 plt.figure()
-sns.scatterplot(pca_components[:,0],pca_components[:,2])
+plt.scatter(pca_components[:,0],pca_components[:,2])
 plt.grid()
 plt.show(block=False)
 
