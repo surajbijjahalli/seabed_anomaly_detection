@@ -468,9 +468,12 @@ best_model.decoder.fc6.in_features = config['model_params']['latent_dim']
 best_model.load_state_dict(torch.load(saved_models_path+'/'+ best_model_name,map_location=device)) # new location is device
 
 print(best_model)
+
+'''
 #%% Evaluate loss of trained model on test and train datasets
 best_model.eval()
 
+#initialize arrays for storing loss on training and test datasets
 train_test_loss_over_time = []
 train_test_recon_loss_over_time = []
 train_test_kl_loss_over_time = []
@@ -480,7 +483,9 @@ train_test_kl_loss_over_time = []
 test_loss_over_time = []
 test_recon_loss_over_time = []
 test_kl_loss_over_time = []
+
 latent_space_training_set = []
+
 for test_sample in JB_test_dataset:
     test_sample_name = test_sample['name']
     
@@ -526,6 +531,79 @@ for sample in JB_train_dataset:
 # write evaluation results to file
 write_list_to_file(train_test_loss_over_time, test_results_path+ '/'+ 'Train_loss_eval.csv')
 write_list_to_file(test_loss_over_time, test_results_path+ '/'+ 'Test_loss_eval.csv')  
+'''
+#%% Evaluate loss of trained model on test and train datasets
+best_model.eval()
+
+#initialize arrays for storing loss on training and test datasets
+train_test_loss_over_time = np.zeros(len(JB_train_dataset))
+train_test_recon_loss_over_time = np.zeros(len(JB_train_dataset))
+train_test_kl_loss_over_time = np.zeros(len(JB_train_dataset))
+
+
+
+test_loss_over_time = np.zeros(len(JB_test_dataset))
+test_recon_loss_over_time = np.zeros(len(JB_test_dataset))
+test_kl_loss_over_time = np.zeros(len(JB_test_dataset))
+
+latent_space_training_set = np.zeros((len(JB_train_dataset),int(config['model_params']['latent_dim'])))
+
+for test_sample_index,test_sample in enumerate(JB_test_dataset):
+    test_sample_name = test_sample['name']
+    
+    test_sample_image = test_sample['image']
+    
+    
+    test_sample_image = torch.unsqueeze(test_sample_image,0)
+    
+    # # # forward pass the images through the network
+
+    test_sample_image_recon,test_sample_z_vector,test_sample_mu_z,test_sample_log_var_z = best_model(test_sample_image)
+            
+    # Calculate loss
+    test_sample_total_loss,test_sample_recon_loss,test_sample_kl_loss = vae_loss(test_sample_image_recon, test_sample_image, test_sample_mu_z, test_sample_log_var_z,variational_beta)
+    
+    test_loss_over_time[test_sample_index] = test_sample_total_loss.item()
+    test_recon_loss_over_time[test_sample_index]=test_sample_recon_loss.item()
+    test_kl_loss_over_time[test_sample_index] = test_sample_kl_loss.item()
+    
+    
+
+for train_idx,sample in enumerate(JB_train_dataset):
+    train_sample_name = sample['name']
+    
+    train_sample_image = sample['image']
+    
+    
+    train_sample_image = torch.unsqueeze(train_sample_image,0)
+    
+    # # # forward pass the images through the network
+
+    train_sample_image_recon,train_sample_z_vector,train_sample_mu_z,train_sample_log_var_z = best_model(train_sample_image)
+            
+    
+    # Calculate loss
+    train_sample_total_loss,train_sample_recon_loss,train_sample_kl_loss = vae_loss(train_sample_image_recon, train_sample_image, train_sample_mu_z, train_sample_log_var_z,variational_beta)
+    
+    train_test_loss_over_time[train_idx] = train_sample_total_loss.item()
+    train_test_recon_loss_over_time[train_idx] = train_sample_recon_loss.item()
+    train_test_kl_loss_over_time[train_idx] = train_sample_kl_loss.item()
+    latent_space_training_set[train_idx,:] = train_sample_mu_z.detach().numpy()
+    
+    
+# =============================================================================
+#     train_test_loss_over_time.append(train_sample_total_loss.item())
+#     train_test_recon_loss_over_time.append(train_sample_recon_loss.item())
+#     train_test_kl_loss_over_time.append(train_sample_kl_loss.item())
+#     latent_space_training_set.append(train_sample_mu_z.detach().numpy())
+# =============================================================================
+    latent_space_array = np.squeeze(np.array(latent_space_training_set))
+
+# write evaluation results to file
+write_list_to_file(train_test_loss_over_time, test_results_path+ '/'+ 'Train_loss_eval.csv')
+write_list_to_file(test_loss_over_time, test_results_path+ '/'+ 'Test_loss_eval.csv')  
+
+
 
 #%% Plot eval metrics - evaluate reconstruction error on training and testing datasets
 plt.figure()
@@ -585,7 +663,7 @@ t_sne = manifold.TSNE(
     random_state=24,metric="euclidean")
 reduced_latent_space = t_sne.fit_transform(latent_space_array)
 scatterplot_figure = plt.figure()
-sns.scatterplot(reduced_latent_space[:,0],reduced_latent_space[:,1])
+plt.scatter(reduced_latent_space[:,0],reduced_latent_space[:,1])
 plt.grid()
 plt.show(block=False)
 
