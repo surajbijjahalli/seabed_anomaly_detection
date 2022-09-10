@@ -533,6 +533,8 @@ write_list_to_file(train_test_loss_over_time, test_results_path+ '/'+ 'Train_los
 write_list_to_file(test_loss_over_time, test_results_path+ '/'+ 'Test_loss_eval.csv')  
 '''
 #%% Evaluate loss of trained model on test and train datasets
+
+best_model = best_model.to(device) # trying something new
 best_model.eval()
 
 #initialize arrays for storing loss on training and test datasets
@@ -556,6 +558,8 @@ for test_sample_index,test_sample in enumerate(JB_test_dataset):
     
     test_sample_image = torch.unsqueeze(test_sample_image,0)
     
+    test_sample_image = test_sample_image.to(device) # Trying something new
+    
     # # # forward pass the images through the network
 
     test_sample_image_recon,test_sample_z_vector,test_sample_mu_z,test_sample_log_var_z = best_model(test_sample_image)
@@ -576,6 +580,7 @@ for train_idx,sample in enumerate(JB_train_dataset):
     
     
     train_sample_image = torch.unsqueeze(train_sample_image,0)
+    train_sample_image = train_sample_image.to(device) # trying something new
     
     # # # forward pass the images through the network
 
