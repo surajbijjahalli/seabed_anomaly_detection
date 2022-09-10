@@ -593,8 +593,11 @@ for train_idx,sample in enumerate(JB_train_dataset):
     train_test_loss_over_time[train_idx] = train_sample_total_loss.item()
     train_test_recon_loss_over_time[train_idx] = train_sample_recon_loss.item()
     train_test_kl_loss_over_time[train_idx] = train_sample_kl_loss.item()
-    latent_space_training_set[train_idx,:] = train_sample_mu_z.detach().numpy()
+    #latent_space_training_set[train_idx,:] = train_sample_mu_z.detach().numpy() # original
     
+    #Trying something new - copy to cpu first before converting to numpy
+    
+    latent_space_training_set[train_idx,:] = train_sample_mu_z.detach().cpu().numpy()
     
 # =============================================================================
 #     train_test_loss_over_time.append(train_sample_total_loss.item())
