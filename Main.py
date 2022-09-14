@@ -60,8 +60,12 @@ config_file_name = args.Filename
 
 # Create neptune run object for logging metrics and metadata
 # NEPTUNE_API_TOKEN = "<api-token-here>"
-run = neptune.init(project='surajbijjahalli/marine-anomaly-detection',
-                    api_token='eyJhcGlfYWRkcmVzcyI6Imh0dHBzOi8vYXBwLm5lcHR1bmUuYWkiLCJhcGlfdXJsIjoiaHR0cHM6Ly9hcHAubmVwdHVuZS5haSIsImFwaV9rZXkiOiIzMGRhZjQzOS1mMTE2LTQ3NzUtYWEwYS1hNDg0ZDAxOTVhZTgifQ==')
+run = neptune.init(
+    project="acfr-marine/seabed-anomaly-detection",
+    api_token="eyJhcGlfYWRkcmVzcyI6Imh0dHBzOi8vYXBwLm5lcHR1bmUuYWkiLCJhcGlfdXJsIjoiaHR0cHM6Ly9hcHAubmVwdHVuZS5haSIsImFwaV9rZXkiOiIzMGRhZjQzOS1mMTE2LTQ3NzUtYWEwYS1hNDg0ZDAxOTVhZTgifQ==",
+)  # your credentials
+
+#run = neptune.init(project='surajbijjahalli/marine-anomaly-detection',api_token='eyJhcGlfYWRkcmVzcyI6Imh0dHBzOi8vYXBwLm5lcHR1bmUuYWkiLCJhcGlfdXJsIjoiaHR0cHM6Ly9hcHAubmVwdHVuZS5haSIsImFwaV9rZXkiOiIzMGRhZjQzOS1mMTE2LTQ3NzUtYWEwYS1hNDg0ZDAxOTVhZTgifQ==')
 
 # folder to load config file
 CONFIG_PATH = "config/"
@@ -411,6 +415,10 @@ for epoch in range(num_epochs):
     #export loss metrics and image sample reconstructions to Neptune
     run['metrics/train_loss'].log(avg_train_loss)
     run['metrics/val_loss'].log(avg_val_loss)
+    run['metrics/recon_loss'].log(avg_train_recon_loss)
+    run['metrics/kl_loss'].log(avg_train_kl_loss)
+    
+    
     run["predictions/recon_imgs"].upload(File.as_image(fig_export))
     
     print('Epoch:', epoch + 1,'/',num_epochs, 'Avg. Training Loss:',avg_train_loss, 'Avg. Validation Loss:',avg_val_loss)
@@ -607,6 +615,15 @@ for train_idx,sample in enumerate(JB_train_dataset):
 # =============================================================================
     latent_space_array = np.squeeze(np.array(latent_space_training_set))
 
+
+#compute statistics of loss of the model on test dataset 
+eval_mean_test_loss = np.mean(test_recon_loss_over_time)
+eval_std_test_loss = np.std(test_recon_loss_over_time)
+run["metrics/mean_test_loss"].log(eval_mean_test_loss)
+run["metrics/std_test_loss"].log(eval_std_test_loss)
+
+
+
 # write evaluation results to file
 write_list_to_file(train_test_loss_over_time, test_results_path+ '/'+ 'Train_loss_eval.csv')
 write_list_to_file(test_loss_over_time, test_results_path+ '/'+ 'Test_loss_eval.csv')  
@@ -614,7 +631,7 @@ write_list_to_file(test_loss_over_time, test_results_path+ '/'+ 'Test_loss_eval.
 
 
 #%% Plot eval metrics - evaluate reconstruction error on training and testing datasets
-plt.figure()
+eval_loss_test_dataset=plt.figure()
 plt.title('Loss on test dataset')
 plt.plot(test_loss_over_time,label='Total loss')
 plt.plot(test_recon_loss_over_time,label='reconstruction loss')
@@ -623,7 +640,7 @@ plt.legend()
 plt.grid()
 plt.show(block=False)
 
-plt.figure()
+eval_loss_train_dataset=plt.figure()
 plt.title('Loss on train dataset')
 plt.plot(train_test_loss_over_time,label='Total loss')
 plt.plot(train_test_recon_loss_over_time,label='reconstruction loss')
@@ -646,6 +663,8 @@ test_eval_images_export = visualize_vae_output_eval(test_sample_image, test_samp
 
 train_eval_images_export = visualize_vae_output_eval(train_sample_image, train_sample_image_recon,train_sample_total_loss,train_sample_recon_loss,train_sample_kl_loss)
 
+run["predictions/loss_on_train_dataset"].upload(File.as_image(eval_loss_train_dataset))
+run["predictions/loss_on_test_dataset"].upload(File.as_image(eval_loss_test_dataset))
 
 run["predictions/test_eval_recon_imgs"].upload(File.as_image(test_eval_images_export))
 run["predictions/train_eval_recon_imgs"].upload(File.as_image(train_eval_images_export))
@@ -655,10 +674,16 @@ run["metrics/loss_distb"].upload(File.as_image(loss_distb_fig))
 # Save this for later - tensorboard visualizations for autoencoders (https://uvadlc-notebooks.readthedocs.io/en/latest/tutorial_notebooks/tutorial9/AE_CIFAR10.html)  
 
 
+#%% Standardize latent space
+from sklearn.preprocessing import StandardScaler,MinMaxScaler
+std_latent_space_array = StandardScaler().fit_transform(latent_space_array)
+
+
 #%% Dimensionality reduction
 
 from sklearn import manifold
 from numpy.random import RandomState
+
 
 import seaborn as sns
 
@@ -668,8 +693,9 @@ t_sne = manifold.TSNE(
     perplexity=30,
     n_iter=1000,
     init="pca",
-    random_state=24,metric="euclidean")
-reduced_latent_space = t_sne.fit_transform(latent_space_array)
+    random_state=24,metric="cosine")
+reduced_latent_space = t_sne.fit_transform(std_latent_space_array)
+
 scatterplot_figure = plt.figure()
 plt.scatter(reduced_latent_space[:,0],reduced_latent_space[:,1])
 plt.grid()
@@ -677,75 +703,58 @@ plt.show(block=False)
 
 run["predictions/latent_space"].upload(File.as_image(scatterplot_figure)) 
 
-
-#plt.figure()
-#sns.scatterplot(reduced_latent_space[:,1],reduced_latent_space[:,2])
-#plt.grid()
-#plt.show()
-
-#plt.figure()
-#sns.scatterplot(reduced_latent_space[:,0],reduced_latent_space[:,2])
-#plt.grid()
-#plt.show()
-
-# #%% Dimensionality reduction using OpentSNE
-
-# from openTSNE import TSNE
-
-# from  openTSNE import utils
-
-# tsne = TSNE(
-#     perplexity=30,exaggeration=4,
-#     metric="euclidean",
-#     n_jobs=8,
-#     random_state=42,
-#     verbose=True,
-# )
-
-# embedding = tsne.fit(latent_space_array)
-
-# #utils.plot(embedding)
-
-# import seaborn as sns
+plt.figure()
+plt.scatter(reduced_latent_space[:,0],reduced_latent_space[:,1])
+plt.grid()
+plt.show(block=False)
 
 
-# scatterplot_figure = plt.figure()
-# sns.scatterplot(embedding[:,0],embedding[:,1])
-# plt.grid()
-# plt.show()
 
-#%%PCA test
+
 
 from sklearn.decomposition import PCA
 
-pca = PCA(n_components=3)
-pca.fit(latent_space_array)
 
-pca_components = pca.components_.T*3
+pca = PCA(n_components=2,whiten=False)
+pca_components = pca.fit_transform(std_latent_space_array)
+
+#pca_components = pca.components_.T
+pca_fig = plt.figure()
+#plot pca and tsne spaces overlaid
+
+plt.scatter(reduced_latent_space[:,0],reduced_latent_space[:,1],label='TSNE reduction',c='red',alpha=0.4)
+plt.scatter(pca_components[:,0],pca_components[:,1],label='PCA reduction',c='blue')
+plt.grid()
+plt.legend()
+plt.show(block=False)
+
 plt.figure()
-plt.scatter(pca_components[:,0],pca_components[:,1])
+plt.scatter(pca_components[:,0],pca_components[:,1],alpha=0.1)
 plt.grid()
 plt.show(block=False)
 
-plt.figure()
-plt.scatter(pca_components[:,1],pca_components[:,2])
+
+
+# Normalize the TSNE and PCA embeddings
+
+norm_pca_components = MinMaxScaler().fit_transform(pca_components)
+norm_reduced_latent_space = MinMaxScaler().fit_transform(reduced_latent_space)
+
+reduced_latent_space_figure = plt.figure(figsize = (15,10))
+plt.subplot(121)
+
+
+
+plt.scatter(norm_reduced_latent_space[:,0],norm_reduced_latent_space[:,1],label='TSNE reduction',c='red',alpha=0.2)
 plt.grid()
-plt.show(block=False)
+plt.legend()
 
-plt.figure()
-plt.scatter(pca_components[:,0],pca_components[:,2])
+plt.subplot(122)
+plt.scatter(norm_pca_components[:,0],norm_pca_components[:,1],label='PCA reduction',c='blue',alpha=0.2)
 plt.grid()
+plt.legend()
 plt.show(block=False)
 
-pca_fig = plt.figure(1, figsize=(8, 6))
-ax = pca_fig.add_subplot(111, projection="3d", elev=-150, azim=110)
+run["predictions/pca_latent_space"].upload(File.as_image(reduced_latent_space_figure)) 
 
-ax.scatter3D(
-    pca_components[:, 0],
-    pca_components[:, 1],
-    pca_components[:, 2],
-    s=100)
-
-ax.view_init(45, 215)
-plt.show(block=False)
-run["predictions/pca_latent_space"].upload(File.as_image(pca_fig)) 
+run.stop()
