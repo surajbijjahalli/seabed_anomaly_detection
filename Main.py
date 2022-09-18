@@ -132,12 +132,13 @@ writer = SummaryWriter()
 train_data_path = config['data_params']['train_data_path']
 test_data_path = config['data_params']['test_data_path']
 val_data_path = config['data_params']['val_data_path']
-
+target_data_path = config['data_params']['target_data_path']
 
 # Empty list to store paths to images
 train_image_paths = []
 test_image_paths = []
 val_image_paths = []
+target_image_paths=[]
 
 # Grab paths to images in train folder
 for data_path in glob.glob(train_data_path + '/*'):
@@ -162,6 +163,13 @@ for data_path in glob.glob(val_data_path + '/*'):
 val_image_paths = list(val_image_paths)
 
 
+for data_path in glob.glob(target_data_path + '/*'):
+    
+    target_image_paths.append(data_path)
+    
+target_image_paths = list(target_image_paths)
+
+
 #%% Import custom classes and define transform
 
 
@@ -179,6 +187,7 @@ train_transform = transforms.Compose([RescaleCustom(64), ToTensorCustom(),Random
 valid_transform = transforms.Compose([RescaleCustom(64),ToTensorCustom()])
 
 test_transform  = transforms.Compose([RescaleCustom(64),ToTensorCustom()])
+target_transform  = transforms.Compose([RescaleCustom(64),ToTensorCustom()])
 
 
 
@@ -186,13 +195,14 @@ test_transform  = transforms.Compose([RescaleCustom(64),ToTensorCustom()])
 
 #%% Create datasets and dataloaders
 batch_size = config['data_params']['train_batch_size']
-JB_train_loader,JB_test_loader,JB_val_loader,JB_train_dataset,JB_test_dataset,JB_valid_dataset,raw_dataset,raw_loader = create_datasets(batch_size=batch_size, train_image_paths = train_image_paths,test_image_paths=test_image_paths,val_image_paths=val_image_paths,
-                    train_transform=train_transform,test_transform=test_transform,valid_transform=valid_transform)
+JB_train_loader,JB_test_loader,JB_val_loader,JB_train_dataset,JB_test_dataset,JB_valid_dataset,raw_dataset,raw_loader,target_dataset = create_datasets(batch_size=batch_size, train_image_paths = train_image_paths,test_image_paths=test_image_paths,val_image_paths=val_image_paths,target_image_paths=target_image_paths,
+                    train_transform=train_transform,test_transform=test_transform,valid_transform=valid_transform,target_transform=target_transform)
 
 # print some stats about the dataset
 print('Length of training dataset: ', len(JB_train_dataset))
 print('Length of validation dataset: ', len(JB_valid_dataset))
 print('Length of test dataset: ', len(JB_test_dataset))
+print('Length of target dataset: ', len(target_dataset))
 
 #print('Original Image shape: ', JervisDataset[0]['image'].shape)
 print('Original image shape', raw_dataset[0]['image'].shape)
@@ -556,6 +566,13 @@ test_loss_over_time = np.zeros(len(JB_test_dataset))
 test_recon_loss_over_time = np.zeros(len(JB_test_dataset))
 test_kl_loss_over_time = np.zeros(len(JB_test_dataset))
 
+#initialize arrays for storing loss on target dataset
+target_loss_over_time = np.zeros(len(target_dataset))
+target_recon_loss_over_time = np.zeros(len(target_dataset))
+target_kl_loss_over_time = np.zeros(len(target_dataset))
+
+
+
 latent_space_training_set = np.zeros((len(JB_train_dataset),int(config['model_params']['latent_dim'])))
 
 for test_sample_index,test_sample in enumerate(JB_test_dataset):
@@ -615,12 +632,41 @@ for train_idx,sample in enumerate(JB_train_dataset):
 # =============================================================================
     latent_space_array = np.squeeze(np.array(latent_space_training_set))
 
+# test trained model on target
+for target_idx,sample in enumerate(target_dataset):
+    target_sample_name = sample['name']
+    
+    target_sample_image = sample['image']
+    
+    
+    target_sample_image = torch.unsqueeze(target_sample_image,0)
+    target_sample_image = target_sample_image.to(device) # trying something new
+    
+    # # # forward pass the images through the network
+
+    target_sample_image_recon,target_sample_z_vector,target_sample_mu_z,target_sample_log_var_z = best_model(target_sample_image)
+            
+    
+    # Calculate loss
+    target_sample_total_loss,target_sample_recon_loss,target_sample_kl_loss = vae_loss(target_sample_image_recon, target_sample_image, target_sample_mu_z, target_sample_log_var_z,variational_beta)
+    
+    target_loss_over_time[target_idx] = target_sample_total_loss.item()
+    target_recon_loss_over_time[target_idx] = target_sample_recon_loss.item()
+    target_kl_loss_over_time[target_idx] = target_sample_kl_loss.item()
+
 
 #compute statistics of loss of the model on test dataset 
 eval_mean_test_loss = np.mean(test_recon_loss_over_time)
 eval_std_test_loss = np.std(test_recon_loss_over_time)
 run["metrics/mean_test_loss"].log(eval_mean_test_loss)
 run["metrics/std_test_loss"].log(eval_std_test_loss)
+
+
+#compute statistics of loss of the model on target dataset 
+eval_mean_target_loss = np.mean(target_recon_loss_over_time)
+eval_std_target_loss = np.std(target_recon_loss_over_time)
+run["metrics/mean_target_loss"].log(eval_mean_target_loss)
+run["metrics/std_target_loss"].log(eval_std_target_loss)
 
 
 
@@ -636,6 +682,7 @@ plt.title('Loss on test dataset')
 plt.plot(test_loss_over_time,label='Total loss')
 plt.plot(test_recon_loss_over_time,label='reconstruction loss')
 plt.plot(test_kl_loss_over_time,label='kl loss')
+plt.plot(target_loss_over_time,label='target recon loss')
 plt.legend()
 plt.grid()
 plt.show(block=False)
@@ -645,6 +692,7 @@ plt.title('Loss on train dataset')
 plt.plot(train_test_loss_over_time,label='Total loss')
 plt.plot(train_test_recon_loss_over_time,label='reconstruction loss')
 plt.plot(train_test_kl_loss_over_time,label='kl loss')
+plt.plot(target_loss_over_time,label='target recon loss')
 plt.legend()
 plt.grid()
 plt.show(block=False)
@@ -663,11 +711,15 @@ test_eval_images_export = visualize_vae_output_eval(test_sample_image, test_samp
 
 train_eval_images_export = visualize_vae_output_eval(train_sample_image, train_sample_image_recon,train_sample_total_loss,train_sample_recon_loss,train_sample_kl_loss)
 
+target_eval_images_export = visualize_vae_output_eval(target_sample_image, target_sample_image_recon,target_sample_total_loss,target_sample_recon_loss,target_sample_kl_loss)
+
 run["predictions/loss_on_train_dataset"].upload(File.as_image(eval_loss_train_dataset))
 run["predictions/loss_on_test_dataset"].upload(File.as_image(eval_loss_test_dataset))
 
 run["predictions/test_eval_recon_imgs"].upload(File.as_image(test_eval_images_export))
 run["predictions/train_eval_recon_imgs"].upload(File.as_image(train_eval_images_export))
+run["predictions/target_eval_recon_imgs"].upload(File.as_image(target_eval_images_export))
+
 run["metrics/loss_distb"].upload(File.as_image(loss_distb_fig))
 #[CONTINUE FROM HERE]
 

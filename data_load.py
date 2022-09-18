@@ -634,7 +634,7 @@ def visualize_vae_output_eval(orig_image,recon_image,total_loss,recon_loss,kl_lo
     plt.show(block=False)
     return fig
 
-def create_datasets(batch_size, train_image_paths,test_image_paths,val_image_paths,train_transform,test_transform,valid_transform):
+def create_datasets(batch_size, train_image_paths,test_image_paths,val_image_paths,target_image_paths,train_transform,test_transform,valid_transform,target_transform):
 
     #Raw dataset
     raw_dataset = MarineBenthicDataset(train_image_paths)
@@ -648,7 +648,7 @@ def create_datasets(batch_size, train_image_paths,test_image_paths,val_image_pat
     # create new valid dataset for each epoch
     valid_dataset = MarineBenthicDataset(val_image_paths,transform=valid_transform)
             
-        
+    target_dataset = MarineBenthicDataset(target_image_paths,transform=target_transform)
       
     
     # load training data in batches
@@ -671,6 +671,6 @@ def create_datasets(batch_size, train_image_paths,test_image_paths,val_image_pat
                              shuffle=True,  
                              num_workers=0)
     
-    return train_loader, test_loader, valid_loader,train_dataset,test_dataset,valid_dataset,raw_dataset,raw_loader
+    return train_loader, test_loader, valid_loader,train_dataset,test_dataset,valid_dataset,raw_dataset,raw_loader,target_dataset
 
 
