@@ -17,7 +17,7 @@ import matplotlib.image as mpimg
 from random import randint
 import os
 import argparse
-
+import cv2
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -36,7 +36,6 @@ from neptune.new.types import File
 import yaml
 
 ## specify command line arguments to be supplied by user
-
 
 
 
@@ -299,6 +298,9 @@ device = torch.device("cuda" if use_gpu and torch.cuda.is_available() else "cpu"
 vae = vae.to(device)
 optimizer = torch.optim.Adam(params=vae.parameters(), lr=learning_rate, weight_decay=weight_decay)
 
+#optimizer = torch.optim.SGD(vae.parameters(), lr=0.0001, momentum=0.9)
+#scheduler = torch.optim.lr_scheduler.CyclicLR(optimizer, base_lr=0.001, max_lr=0.01)
+
 # Define scheduler to reduce learning rate when a validation loss has stopped improving - default reduction is 0.1
 plateau_lr_scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, 'min',  patience=1, verbose=True)
 
@@ -395,6 +397,8 @@ for epoch in range(num_epochs):
             # update the weights
         optimizer.step()
         
+        
+        #scheduler.step()
             # print loss statistics
             # to convert loss into a scalar and add it to the running_loss, use .item()
         running_train_loss += loss.item()
@@ -434,7 +438,7 @@ for epoch in range(num_epochs):
     print('Epoch:', epoch + 1,'/',num_epochs, 'Avg. Training Loss:',avg_train_loss, 'Avg. Validation Loss:',avg_val_loss)
     print('Epoch:', epoch + 1,'/',num_epochs, 'Avg. reconstruction training Loss:',avg_train_recon_loss, 'Avg. reconstruction kl Loss:',avg_train_kl_loss)
     
-    
+    print('Gradient1: ', vae.encoder.conv1.weight.grad.abs().sum(),'Gradient2: ', vae.encoder.conv2.weight.grad.abs().sum(),'Gradient3: ', vae.encoder.conv3.weight.grad.abs().sum())
     
     # save model if validation loss has decreased
     if avg_val_loss <= val_loss_min:
@@ -575,6 +579,10 @@ target_kl_loss_over_time = np.zeros(len(target_dataset))
 
 latent_space_training_set = np.zeros((len(JB_train_dataset),int(config['model_params']['latent_dim'])))
 
+latent_space_target_set = np.zeros((len(target_dataset),int(config['model_params']['latent_dim'])))
+
+latent_space_test_set = np.zeros((len(JB_test_dataset),int(config['model_params']['latent_dim'])))
+
 for test_sample_index,test_sample in enumerate(JB_test_dataset):
     test_sample_name = test_sample['name']
     
@@ -596,6 +604,9 @@ for test_sample_index,test_sample in enumerate(JB_test_dataset):
     test_recon_loss_over_time[test_sample_index]=test_sample_recon_loss.item()
     test_kl_loss_over_time[test_sample_index] = test_sample_kl_loss.item()
     
+    latent_space_test_set[test_sample_index,:] = test_sample_mu_z.detach().cpu().numpy()
+    
+    latent_space_test_set_array = np.squeeze(np.array(latent_space_test_set))
     
 
 for train_idx,sample in enumerate(JB_train_dataset):
@@ -653,7 +664,13 @@ for target_idx,sample in enumerate(target_dataset):
     target_loss_over_time[target_idx] = target_sample_total_loss.item()
     target_recon_loss_over_time[target_idx] = target_sample_recon_loss.item()
     target_kl_loss_over_time[target_idx] = target_sample_kl_loss.item()
+    
+    # add code here to extract latent vector of target samples
+    
+    latent_space_target_set[target_idx,:] = target_sample_mu_z.detach().cpu().numpy()
+    
 
+    latent_space_array_target = np.squeeze(np.array(latent_space_target_set))
 
 #compute statistics of loss of the model on test dataset 
 eval_mean_test_loss = np.mean(test_recon_loss_over_time)
@@ -682,7 +699,7 @@ plt.title('Loss on test dataset')
 plt.plot(test_loss_over_time,label='Total loss')
 plt.plot(test_recon_loss_over_time,label='reconstruction loss')
 plt.plot(test_kl_loss_over_time,label='kl loss')
-plt.plot(target_loss_over_time,label='target recon loss')
+plt.plot(target_recon_loss_over_time,label='target recon loss')
 plt.legend()
 plt.grid()
 plt.show(block=False)
@@ -692,7 +709,7 @@ plt.title('Loss on train dataset')
 plt.plot(train_test_loss_over_time,label='Total loss')
 plt.plot(train_test_recon_loss_over_time,label='reconstruction loss')
 plt.plot(train_test_kl_loss_over_time,label='kl loss')
-plt.plot(target_loss_over_time,label='target recon loss')
+plt.plot(target_recon_loss_over_time,label='target recon loss')
 plt.legend()
 plt.grid()
 plt.show(block=False)
@@ -702,9 +719,20 @@ loss_distb_fig = plt.figure()
 plt.title('loss distributions')
 plt.hist(train_test_loss_over_time,density=True, alpha=0.5, bins=np.arange(min(train_test_loss_over_time), max(train_test_loss_over_time) + binwidth, binwidth),label='training dataset')
 plt.hist(test_loss_over_time,density=True, alpha=0.5, bins=np.arange(min(test_loss_over_time), max(test_loss_over_time) + binwidth, binwidth),label='test dataset')
+plt.hist(target_loss_over_time,density=True,alpha=0.5,bins=np.arange(min(target_loss_over_time), max(target_loss_over_time) + binwidth, binwidth),label='target dataset')
 plt.legend()
 plt.grid()
 plt.show(block=False)
+
+recon_loss_distb_fig = plt.figure()
+plt.title('recon error distributions')
+plt.hist(train_test_recon_loss_over_time,density=True, alpha=0.5, bins=np.arange(min(train_test_recon_loss_over_time), max(train_test_recon_loss_over_time) + binwidth, binwidth),label='training dataset')
+plt.hist(test_recon_loss_over_time,density=True, alpha=0.5, bins=np.arange(min(test_recon_loss_over_time), max(test_recon_loss_over_time) + binwidth, binwidth),label='test dataset')
+plt.hist(target_recon_loss_over_time,density=True,alpha=0.5,bins=np.arange(min(target_recon_loss_over_time), max(target_recon_loss_over_time) + binwidth, binwidth),label='target dataset')
+plt.legend()
+plt.grid()
+plt.show(block=False)
+
 
 
 test_eval_images_export = visualize_vae_output_eval(test_sample_image, test_sample_image_recon,test_sample_total_loss,test_sample_recon_loss,test_sample_kl_loss)
@@ -721,6 +749,8 @@ run["predictions/train_eval_recon_imgs"].upload(File.as_image(train_eval_images_
 run["predictions/target_eval_recon_imgs"].upload(File.as_image(target_eval_images_export))
 
 run["metrics/loss_distb"].upload(File.as_image(loss_distb_fig))
+
+run["metrics/recon_loss_distb"].upload(File.as_image(recon_loss_distb_fig))
 #[CONTINUE FROM HERE]
 
 # Save this for later - tensorboard visualizations for autoencoders (https://uvadlc-notebooks.readthedocs.io/en/latest/tutorial_notebooks/tutorial9/AE_CIFAR10.html)  
@@ -728,85 +758,160 @@ run["metrics/loss_distb"].upload(File.as_image(loss_distb_fig))
 
 #%% Standardize latent space
 from sklearn.preprocessing import StandardScaler,MinMaxScaler
-std_latent_space_array = StandardScaler().fit_transform(latent_space_array)
+latent_space_test_set_array
+# change the latent space array to either the train dataset (latent_space_array) or the test dataset(latent_space_test_set_array) as per requirement
+std_latent_space_array = StandardScaler().fit_transform(latent_space_array) # was fit _transform(latent_space_array) before - when trying to fit the training set
+std_latent_space_array_target = StandardScaler().fit_transform(latent_space_array_target)
 
+combined_latent_space_array = np.append(std_latent_space_array,std_latent_space_array_target,axis=0)
 
 #%% Dimensionality reduction
 
 from sklearn import manifold
 from numpy.random import RandomState
-
+from sklearn.decomposition import PCA
 
 import seaborn as sns
 
 rng = RandomState(0)
 t_sne = manifold.TSNE(
-    n_components=2,learning_rate=200,verbose=1,
+    n_components=3,learning_rate=200,verbose=1,
     perplexity=30,
     n_iter=1000,
     init="pca",
     random_state=24,metric="cosine")
-reduced_latent_space = t_sne.fit_transform(std_latent_space_array)
+#reduced_latent_space = t_sne.fit_transform(std_latent_space_array)
 
-scatterplot_figure = plt.figure()
-plt.scatter(reduced_latent_space[:,0],reduced_latent_space[:,1])
-plt.grid()
-plt.show(block=False)
+tsne_combined_reduced_latent_space_array = t_sne.fit_transform(combined_latent_space_array)
+tsne_combined_reduced_latent_space_array = MinMaxScaler().fit_transform(tsne_combined_reduced_latent_space_array)
 
-run["predictions/latent_space"].upload(File.as_image(scatterplot_figure)) 
 
+# plot normalized tsne plot with anomalies overlaid
 plt.figure()
-plt.scatter(reduced_latent_space[:,0],reduced_latent_space[:,1])
+plt.scatter(tsne_combined_reduced_latent_space_array[0:len(std_latent_space_array),0],tsne_combined_reduced_latent_space_array[0:len(std_latent_space_array),1],alpha=0.4) # was originally len(JB_train_dataset)
+plt.scatter(tsne_combined_reduced_latent_space_array[(len(std_latent_space_array)+1):,0],tsne_combined_reduced_latent_space_array[(len(std_latent_space_array)+1):,1],alpha=0.4,c='red')
+
 plt.grid()
 plt.show(block=False)
 
 
 
 
+#%%
 
-from sklearn.decomposition import PCA
 
 
-pca = PCA(n_components=2,whiten=False)
-pca_components = pca.fit_transform(std_latent_space_array)
+pca = PCA(n_components=3,whiten=False)
+pca_components = pca.fit_transform(combined_latent_space_array)
 
-#pca_components = pca.components_.T
+
 pca_fig = plt.figure()
-#plot pca and tsne spaces overlaid
-
-plt.scatter(reduced_latent_space[:,0],reduced_latent_space[:,1],label='TSNE reduction',c='red',alpha=0.4)
-plt.scatter(pca_components[:,0],pca_components[:,1],label='PCA reduction',c='blue')
-plt.grid()
-plt.legend()
-plt.show(block=False)
-
-plt.figure()
-plt.scatter(pca_components[:,0],pca_components[:,1],alpha=0.1)
-plt.grid()
-plt.show(block=False)
-
 
 
 # Normalize the TSNE and PCA embeddings
 
 norm_pca_components = MinMaxScaler().fit_transform(pca_components)
-norm_reduced_latent_space = MinMaxScaler().fit_transform(reduced_latent_space)
+
+#tsne
+#norm_reduced_latent_space = MinMaxScaler().fit_transform(reduced_latent_space)
 
 reduced_latent_space_figure = plt.figure(figsize = (15,10))
 plt.subplot(121)
 
-
-
-plt.scatter(norm_reduced_latent_space[:,0],norm_reduced_latent_space[:,1],label='TSNE reduction',c='red',alpha=0.2)
+plt.scatter(tsne_combined_reduced_latent_space_array[0:len(std_latent_space_array),0],tsne_combined_reduced_latent_space_array[0:len(std_latent_space_array),1],alpha=0.2) # was originally len(JB_train_dataset)
+plt.scatter(tsne_combined_reduced_latent_space_array[(len(std_latent_space_array)+1):,0],tsne_combined_reduced_latent_space_array[(len(std_latent_space_array)+1):,1],alpha=0.4,c='red')
 plt.grid()
 plt.legend()
 
 plt.subplot(122)
-plt.scatter(norm_pca_components[:,0],norm_pca_components[:,1],label='PCA reduction',c='blue',alpha=0.2)
+#plt.scatter(norm_pca_components[:,0],norm_pca_components[:,1],label='PCA reduction',c='green',alpha=0.2)
+
+plt.scatter(norm_pca_components[0:len(std_latent_space_array),0],norm_pca_components[0:len(std_latent_space_array),1],alpha=0.2,c='green')
+plt.scatter(norm_pca_components[(len(std_latent_space_array)+1):,0],norm_pca_components[(len(std_latent_space_array)+1):,1],alpha=0.4,c='red')
+
+
 plt.grid()
 plt.legend()
 plt.show(block=False)
 
+
 run["predictions/pca_latent_space"].upload(File.as_image(reduced_latent_space_figure)) 
+ 
+
+
+
+
+
+#%% New way to overlay images on latent space
+
+
+def scale_image(image, max_image_size):
+    image_height, image_width, _ = image.shape
+
+    scale = max(1, image_width / max_image_size, image_height / max_image_size)
+    image_width = int(image_width / scale)
+    image_height = int(image_height / scale)
+
+    image = cv2.resize(image, (image_width, image_height))
+    return image
+
+def compute_plot_coordinates(image, x, y, image_centers_area_size, offset):
+    image_height, image_width, _ = image.shape
+
+    # compute the image center coordinates on the plot
+    center_x = int(image_centers_area_size * x) + offset
+
+    # in matplotlib, the y axis is directed upward
+    # to have the same here, we need to mirror the y coordinate
+    center_y = int(image_centers_area_size * (1 - y)) + offset
+
+    # knowing the image center, compute the coordinates of the top left and bottom right corner
+    tl_x = center_x - int(image_width / 2)
+    tl_y = center_y - int(image_height / 2)
+
+    br_x = tl_x + image_width
+    br_y = tl_y + image_height
+
+    return tl_x, tl_y, br_x, br_y
+
+
+def visualize_tsne_images(tx, ty, images, plot_size=1000, max_image_size=5):
+    # we'll put the image centers in the central area of the plot
+    # and use offsets to make sure the images fit the plot
+    max_image_size=100
+    plot_size = 1000
+    offset = max_image_size // 2
+    image_centers_area_size = plot_size - 2 * offset
+    
+    tsne_plot = 255 * np.ones((plot_size, plot_size, 3), np.uint8)
+    
+    # now we'll put a small copy of every image to its corresponding T-SNE coordinate
+    for image_path, x, y in zip(images, tx, ty):
+        image = cv2.imread(image_path)
+    
+        # scale the image to put it to the plot
+        image = scale_image(image, max_image_size)
+    
+      
+    
+        # compute the coordinates of the image on the scaled plot visualization
+        tl_x, tl_y, br_x, br_y = compute_plot_coordinates(image, x, y, image_centers_area_size, offset)
+    
+        # put the image to its TSNE coordinates using numpy subarray indices
+        tsne_plot[tl_y:br_y, tl_x:br_x, :] = image
+    tsne_img_plot = plt.figure(figsize=(15,50))
+    plt.imshow(tsne_plot[:, :, ::-1])
+    plt.grid()
+    plt.show(block=False)
+    return tsne_img_plot
+
+random_indexes = np.random.randint(0,len(std_latent_space_array),400)
+
+tsne_array_random_subset = tsne_combined_reduced_latent_space_array[random_indexes]
+images_random_subset = np.array(train_image_paths)[random_indexes]
+
+tsne_img_overlay = visualize_tsne_images(tsne_array_random_subset[:,0],tsne_array_random_subset[:,1],images_random_subset)
+    
+run["predictions/latent_img_visualization"].upload(File.as_image(tsne_img_overlay))
 
 run.stop()

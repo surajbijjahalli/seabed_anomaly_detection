@@ -8,7 +8,7 @@ model_params:
   model_name: 'BetaVae'
   in_channels: 3
   latent_dim: 256
-  kld_weight: 1.0
+  kld_weight: 17.0
 
 data_params:
   train_data_path: "dataset_split/train/data"
@@ -22,6 +22,6 @@ data_params:
 
 trainer_params:
   use_gpu: True
-  max_epochs: 15
-  LR: 0.001
+  max_epochs: 50
+  LR: 0.00001
   weight_decay: 0.00001
