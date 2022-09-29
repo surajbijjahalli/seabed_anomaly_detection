@@ -12,8 +12,9 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+from torchmetrics import StructuralSimilarityIndexMeasure
 
-
+ssim = StructuralSimilarityIndexMeasure()
 
 '''Parameter Settings
 -------------------
@@ -27,8 +28,8 @@ import torch.nn.functional as F
 # solutions may include increasing the number of latent dimensions or in gradually converging to the bottleneck. In that case, perhaps something to look at
 # would be something like t-SNE to visualize high-dimensional latent space. The effect of latent dimensions are reiterated by Ava Soleimany in the MIT deep learning youtube lecture (https://www.youtube.com/watch?v=rZufA635dq4)
 # latent_dims = Main.config['model_params']['latent_dim'] # was hardcoded 256 previously
-latent_dims = 256
-capacity = 64
+latent_dims = 128
+#capacity = 64
 
 # variational_beta = Main.config['model_params']['kld_weight']
 
@@ -51,24 +52,27 @@ Kernel size 4 is used to avoid biasing problems described here: https://distill.
 class Encoder(nn.Module):
     def __init__(self):
         super(Encoder, self).__init__()
-        c = capacity
+        
         self.conv1 = nn.Conv2d(in_channels=3, out_channels=32, kernel_size=3,stride=2,padding=1) # input_dim = [3,224,280];out: [96,54,68]
         self.bn1 = nn.BatchNorm2d(32)
-        
+        self.drop1 = nn.Dropout(p=0.05)
         
         
         self.conv2 = nn.Conv2d(in_channels=32, out_channels=64, kernel_size=3,stride=2,padding=1) # input_dim = [3,224,280];out: [96,54,68]
         self.bn2 = nn.BatchNorm2d(64)
+        self.drop2 = nn.Dropout(p=0.05)
         
         self.conv3 = nn.Conv2d(in_channels=64, out_channels=128, kernel_size=3,stride=2,padding=1) # input_dim = [3,224,280];out: [96,54,68]
         self.bn3 = nn.BatchNorm2d(128)
+        self.drop3 = nn.Dropout(p=0.1)
         
         self.conv4 = nn.Conv2d(in_channels=128, out_channels=256, kernel_size=3,stride=2,padding=1) # input_dim = [3,224,280];out: [96,54,68]
         self.bn4 = nn.BatchNorm2d(256)
+        self.drop4 = nn.Dropout(p=0.1)
         
         self.conv5 = nn.Conv2d(in_channels=256, out_channels=512, kernel_size=3,stride=2,padding=1) # input_dim = [3,224,280];out: [96,54,68]
         self.bn5 = nn.BatchNorm2d(512)
-        
+        self.drop5 = nn.Dropout(p=0.5)
         #Original     (when input image size was 64,64)   
         # self.fc_mu = nn.Linear(in_features=512*4, out_features=latent_dims)
         # self.fc_logvar = nn.Linear(in_features=512*4, out_features=latent_dims)
@@ -78,11 +82,20 @@ class Encoder(nn.Module):
             
     def forward(self, x):
         x = F.leaky_relu(self.bn1(self.conv1(x)))
+       # x=self.drop1(x)
+        
         x = F.leaky_relu(self.bn2(self.conv2(x)))
+       # x=self.drop2(x)
+        
         x = F.leaky_relu(self.bn3(self.conv3(x)))
+        #x=self.drop3(x)
+        
         x = F.leaky_relu(self.bn4(self.conv4(x)))
+       # x=self.drop4(x)
+        
         x = F.leaky_relu(self.bn5(self.conv5(x)))
-       
+        #x=self.drop5(x)
+        
         x = x.view(x.size(0), -1)
         
         x_mu = self.fc_mu(x)
@@ -156,7 +169,7 @@ class VariationalAutoencoder(nn.Module):
     def forward(self, x):
         latent_mu, latent_logvar = self.encoder(x)
         latent = self.latent_sample(latent_mu, latent_logvar) #sample the latent vector z
-        x_recon = self.decoder(latent) # pass the sampled latent vector z to the decoder
+        x_recon = self.decoder(latent_mu) # pass the sampled latent vector z to the decoder. changed to latent_mu for vanilla autoencoder i.e. no sampling
         # return x_recon, latent_mu, latent_logvar #was this previously
         return x_recon,latent,latent_mu,latent_logvar #also return latent sample
     
@@ -174,40 +187,15 @@ class VariationalAutoencoder(nn.Module):
         
         
 def vae_loss(recon_x, x, mu, logvar,variational_beta):
-    # recon_x is the probability of a multivariate Bernoulli distribution p.
-    # -log(p(x)) is then the pixel-wise binary cross-entropy.
-    # Averaging or not averaging the binary cross-entropy over all pixels here
-    # is a subtle detail with big effect on training, since it changes the weight
-    # we need to pick for the other loss term by several orders of magnitude.
-    # Not averaging is the direct implementation of the negative log likelihood,
-    # but averaging makes the weight of the other loss term independent of the image resolution.
-    # Note to self - a different reconstruction loss term may have to be used here e.g. a squared-Euclidean distance F.mse_loss
     
-    # another way of specifying the loss is mentioned here: https://debuggercafe.com/getting-started-with-variational-autoencoder-using-pytorch/
-    #criterion = nn.BCELoss(reduction='sum')
-    
-    # A good discussion on the use of BCE vs MSE is here: https://github.com/pytorch/examples/issues/399 . Essentially BCE was used in
-    # original VAE paper because the decoder hada sigmoid at the end which can be viewed as a 'Bernoulli distribution'
-    
-    #recon_loss = F.binary_cross_entropy(recon_x.view(-1, 784), x.view(-1, 784), reduction='sum')
     
     # Mean squared error loss - by default, the loss is averaged over number of elements,
     # alternatives for reduction are 'none' or 'sum'
     recon_loss = torch.nn.MSELoss(reduction='sum') (recon_x,x)
+    #recon_loss  = 0.4*torch.nn.L1Loss(reduction='mean') (recon_x,x)+(1-ssim(recon_x,x))
     
-    # KL-divergence between the prior distribution over latent vectors
-    # (the one we are going to sample from when generating new images)
-    # and the distribution estimated by the generator for the given image. 
-    
-    # The signs appear to be reversed. Also the .exp() for the logvar 
-    # This site appears to confirm summing divergence over latent dimensions i.e. dim = 1 (https://kvfrans.com/variational-autoencoders-explained/)
-    # This site confirms that the divergence is summed over latent dimensions https://leenashekhar.github.io/2019-01-30-KL-Divergence/
-    # further confirmation that the divergence is summed over latent dimensions (https://stats.stackexchange.com/questions/318748/deriving-the-kl-divergence-loss-for-vaes)
-    # A possible option is to use the built-in function (https://pytorch.org/docs/stable/generated/torch.nn.KLDivLoss.html)
     kldivergence = torch.mean(-0.5 * torch.sum(1 + logvar - mu.pow(2) - logvar.exp(),dim=1),dim=0) # mostly consistent with https://arxiv.org/pdf/1907.08956v1.pdf
     
-    #kld_loss = torch.mean(-0.5 * torch.sum(1 + logvar - mu ** 2 - logvar.exp(), dim = 1), dim = 0)
-    
-    
+        
     
     return recon_loss + variational_beta * kldivergence, recon_loss, kldivergence
