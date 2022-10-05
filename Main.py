@@ -175,7 +175,7 @@ target_image_paths = list(target_image_paths)
 # the dataset we created in Notebook 1 is copied in the helper file `data_load.py`
 from data_load import MarineBenthicDataset, visualize_output_loader,visualize_raw_data_loader, encoder_sample_output,visualize_vae_output,visualize_vae_output_eval
 # the transforms we defined in Notebook 1 are in the helper file `data_load.py`
-from data_load import create_datasets,RescaleCustom, RandomCropCustom, NormalizeNew, ToTensorCustom, RandomRotateCustom, RandomHorizontalFlip,RandomVerticalFlip,ColorJitter
+from data_load import create_datasets,RescaleCustom, RandomCropCustom, NormalizeNew, ToTensorCustom, RandomRotateCustom, RandomHorizontalFlip,RandomVerticalFlip,NewColorJitter
 
 
 # Define data transforms for training, validation and testing 
@@ -592,7 +592,7 @@ for epoch in range(num_epochs):
     run["predictions/recon_imgs"].upload(File.as_image(fig_export))
     
     print('Epoch:', epoch + 1,'/',num_epochs, 'Avg. Training Loss:',avg_train_loss, 'Avg. Validation Loss:',avg_val_loss)
-    print('Epoch:', epoch + 1,'/',num_epochs, 'Avg. reconstruction training Loss:',avg_train_recon_loss, 'Avg. reconstruction kl Loss:',avg_train_kl_loss)
+    #print('Epoch:', epoch + 1,'/',num_epochs, 'Avg. reconstruction training Loss:',avg_train_recon_loss, 'Avg. reconstruction kl Loss:',avg_train_kl_loss)
     
     
     # save model if validation loss has decreased
@@ -603,7 +603,11 @@ for epoch in range(num_epochs):
        best_model_name = 'checkpoint'+checkpoint_name+'.pt'
        val_loss_min = avg_val_loss
     
+    early_stopping(avg_val_loss, vae)
     
+    if early_stopping.early_stop:
+       print("Early stopping")
+       break
 
 # write loss curves to file
 write_list_to_file(train_loss_over_time, training_log_path+ '/'+ 'Training_Loss.csv')
@@ -860,7 +864,7 @@ run["metrics/recon_loss_distb"].upload(File.as_image(recon_loss_distb_fig))
 from sklearn.preprocessing import StandardScaler,MinMaxScaler
 latent_space_test_set_array
 # change the latent space array to either the train dataset (latent_space_array) or the test dataset(latent_space_test_set_array) as per requirement
-std_latent_space_array = StandardScaler().fit_transform(latent_space_array) # was fit _transform(latent_space_array) before - when trying to fit the training set
+std_latent_space_array = StandardScaler().fit_transform(latent_space_test_set_array) # was fit _transform(latent_space_array) before - when trying to fit the training set
 std_latent_space_array_target = StandardScaler().fit_transform(latent_space_array_target)
 
 combined_latent_space_array = np.append(std_latent_space_array,std_latent_space_array_target,axis=0)
@@ -876,9 +880,9 @@ import seaborn as sns
 rng = RandomState(0)
 t_sne = manifold.TSNE(
     n_components=3,learning_rate=200,verbose=1,
-    perplexity=30,
-    n_iter=1000,
-    init="pca",
+    perplexity=40,
+    n_iter=2000,
+    init="pca",early_exaggeration=12.0,
     random_state=24,metric="cosine")
 #reduced_latent_space = t_sne.fit_transform(std_latent_space_array)
 
@@ -937,9 +941,14 @@ plt.show(block=False)
 
 run["predictions/pca_latent_space"].upload(File.as_image(reduced_latent_space_figure)) 
  
+#%% Plot 3d latent space combined with recon error
 
+fig = plt.figure(figsize=(15,15))
+ax = fig.add_subplot(projection='3d')
 
-
+ax.scatter(tsne_combined_reduced_latent_space_array[0:len(JB_test_dataset),0],tsne_combined_reduced_latent_space_array[0:len(JB_test_dataset),1] , test_recon_loss_over_time)
+ax.scatter(tsne_combined_reduced_latent_space_array[len(JB_test_dataset):,0],tsne_combined_reduced_latent_space_array[len(JB_test_dataset),1] , target_recon_loss_over_time,c='red')
+ax.view_init(elev=20, azim=45)
 
 
 #%% New way to overlay images on latent space

@@ -25,7 +25,7 @@ import csv
 
 class EarlyStopping:
     """Early stops the training if validation loss dosen't improve after a given patience."""
-    def __init__(self,patience=15):
+    def __init__(self,patience=2):
         """
         Args:
             patience (int): How long to wait after last time validation loss improved. 
@@ -49,7 +49,7 @@ class EarlyStopping:
                 self.early_stop = True
         else:
             self.best_score = score
-            self.save_checkpoint(val_loss, model)
+            #self.save_checkpoint(val_loss, model)
             self.counter = 0
     
     def save_checkpoint(self, val_loss, model):

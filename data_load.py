@@ -439,7 +439,7 @@ class RandomVerticalFlip(object):
         return {'image': image, 'name': name}
     
     
-class ColorJitter(object):
+class NewColorJitter(object):
     """ColorJitter image in sample"""
     def __call__(self, sample):
         image, name = sample['image'], sample['name']
@@ -447,7 +447,7 @@ class ColorJitter(object):
         color_jitter = transforms.ColorJitter(
             brightness=0.4,
             contrast=0.4,
-            saturation=0.4,)
+            saturation=0.4)
         
         #image_copy = np.copy(image)
         
