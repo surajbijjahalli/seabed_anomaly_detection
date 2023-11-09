@@ -1,0 +1,27 @@
+experiment_params:
+  experiment_name: 'transfer_resnet50'
+  output_path: "experiments"
+
+
+
+model_params:
+  model_name: 'vae'
+  in_channels: 3
+  latent_dim: 64
+  kld_weight: 0.0
+
+data_params:
+  train_data_path: "/home/surajb/seabed_anomaly_detection_saved_models/experiments_autoencoder_low_lr/large_jervis_dataset_split/train/data"
+  val_data_path: "/home/surajb/seabed_anomaly_detection_saved_models/experiments_autoencoder_low_lr/large_jervis_dataset_split/val/data"
+  test_data_path: "dataset_split/test/data"
+  target_data_path: "jervis_target_images"
+  train_batch_size: 32
+  val_batch_size:  32
+  test_batch_size: 32
+  num_workers: 0
+
+trainer_params:
+  use_gpu: True
+  max_epochs: 100
+  LR: 0.001
+  weight_decay: 0.00001

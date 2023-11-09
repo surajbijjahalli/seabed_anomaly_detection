@@ -1,0 +1,42 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+Created on Tue Oct 11 08:56:56 2022
+
+@author: surajb
+"""
+
+# Plot performance curves across multiple models - plot using csv file from neptune
+
+import pandas as pd
+import matplotlib.pyplot as plt
+
+data = pd.read_csv('/home/surajb/seabed_anomaly_detection_saved_models/autoencoder_results_3.csv')
+#data.plot(data['parameters/model_params/latent_dim'],data['metrics/recon_error_separation(last)'])
+#data.plot(data.parameters/model params/latent_dim,data.metrics/recon error separation)
+something = data['parameters/model_params/latent_dim']
+something_else = data['metrics/recon_error_separation (last)']
+
+plt.figure()
+plt.plot(data['parameters/model_params/latent_dim'],data['metrics/recon_error_separation (last)'])
+
+plt.figure()
+plt.plot(data['parameters/model_params/latent_dim'],data['metrics/mean_target_loss (average)'],color='r',label='target')
+plt.plot(data['parameters/model_params/latent_dim'], data['metrics/mean_target_loss (average)'] - data['metrics/std_target_loss (average)'], color='r', linestyle='dashed')
+plt.plot(data['parameters/model_params/latent_dim'], data['metrics/mean_target_loss (average)'] + data['metrics/std_target_loss (average)'], color='r', linestyle='dashed')
+
+filler = plt.fill_between(data['parameters/model_params/latent_dim'], data['metrics/mean_target_loss (average)'] - data['metrics/std_target_loss (average)'], data['metrics/mean_target_loss (average)'] + data['metrics/std_target_loss (average)'], color='r', alpha=0.2)
+
+
+
+plt.plot(data['parameters/model_params/latent_dim'],data['metrics/mean_test_loss (average)'],color='b',label='test')
+plt.plot(data['parameters/model_params/latent_dim'], data['metrics/mean_test_loss (average)'] - data['metrics/std_test_loss (average)'], color='b', linestyle='dashed')
+plt.plot(data['parameters/model_params/latent_dim'], data['metrics/mean_test_loss (average)'] + data['metrics/std_test_loss (average)'], color='b', linestyle='dashed')
+
+blue_filler=plt.fill_between(data['parameters/model_params/latent_dim'], data['metrics/mean_test_loss (average)'] - data['metrics/std_test_loss (average)'], data['metrics/mean_test_loss (average)'] + data['metrics/std_test_loss (average)'], color='b', alpha=0.2)
+
+
+
+plt.grid()
+plt.legend()
+

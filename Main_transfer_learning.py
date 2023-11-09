@@ -5,7 +5,7 @@ Created on Tue Apr 26 11:31:48 2022
 
 @author: surajb
 """
-## shebang was 
+
 
 #%% Import libraries
 import matplotlib.pyplot as plt
@@ -25,7 +25,7 @@ import torch.nn.functional as F
 from torch.utils.data import Dataset, DataLoader
 from torchvision import transforms, utils
 
-#%%
+
 
 from torch.utils.tensorboard import SummaryWriter
 
@@ -34,28 +34,28 @@ import neptune.new as neptune
 from neptune.new.types import File
 
 import yaml
-
+from pytorch_msssim import msssim, ssim
 ## specify command line arguments to be supplied by user
 
+from torchvision.models import resnet50
 
-
-
+#%% Create argument parser
 
 # Create the parser
 my_parser = argparse.ArgumentParser(description='train and test a model using a specified config file')
 
 # Add the arguments
 my_parser.add_argument('Filename',
-                       metavar='filename',
-                       type=str,
-                       help='the name of the config file which specifies hyperparams')
+                        metavar='filename',
+                        type=str,
+                        help='the name of the config file which specifies hyperparams')
 
 # Execute the parse_args() method
 args = my_parser.parse_args()
 
 config_file_name = args.Filename
 
-
+# config_file_name = 'transfer_learning_vae.yaml'
 
 # Create neptune run object for logging metrics and metadata
 # NEPTUNE_API_TOKEN = "<api-token-here>"
@@ -113,10 +113,9 @@ else:
     
 
 
-# os.mkdir(experiment_path) 
-# print("Directory '% s' created" % experiment_path) 
 
-writer = SummaryWriter()
+
+
 #%% Grab paths to training images
 
 #train_data_path = '/media/surajb/Extreme SSD/marine_dataset_Jervis_2021/r20210407_061916_NG106_hyams_depth_gated_target/raw_targetless_imgs/alp/converted_images'
@@ -175,18 +174,18 @@ target_image_paths = list(target_image_paths)
 # the dataset we created in Notebook 1 is copied in the helper file `data_load.py`
 from data_load import MarineBenthicDataset, visualize_output_loader,visualize_raw_data_loader, encoder_sample_output,visualize_vae_output,visualize_vae_output_eval
 # the transforms we defined in Notebook 1 are in the helper file `data_load.py`
-from data_load import create_datasets,RescaleCustom, RandomCropCustom, NormalizeNew, ToTensorCustom, RandomRotateCustom, RandomHorizontalFlip,RandomVerticalFlip,NewColorJitter
+from data_load import create_datasets,RescaleCustom, RandomCropCustom, NormalizeNew, ToTensorCustom, RandomRotateCustom, RandomHorizontalFlip,RandomVerticalFlip,NewColorJitter,CenterCropCustom
 
-
+import torchvision.transforms as T
 # Define data transforms for training, validation and testing 
 # train_transform = transforms.Compose([RandomCropCustom(64),ToTensorCustom(),RandomHorizontalFlip(),RandomVerticalFlip()])
 # valid_transform = transforms.Compose([RandomCropCustom(64),ToTensorCustom()])
 
-train_transform = transforms.Compose([RescaleCustom(64), ToTensorCustom(),RandomHorizontalFlip(),RandomVerticalFlip()])
-valid_transform = transforms.Compose([RescaleCustom(64),ToTensorCustom()])
+train_transform = transforms.Compose([RescaleCustom(224), ToTensorCustom(),CenterCropCustom(224),RandomHorizontalFlip(),RandomVerticalFlip()])
+valid_transform = transforms.Compose([RescaleCustom(224),ToTensorCustom(),CenterCropCustom(224)])
 
-test_transform  = transforms.Compose([RescaleCustom(64),ToTensorCustom()])
-target_transform  = transforms.Compose([RescaleCustom(64),ToTensorCustom()])
+test_transform  = transforms.Compose([RescaleCustom(224),ToTensorCustom(),CenterCropCustom(224)])
+target_transform  = transforms.Compose([RescaleCustom(224),ToTensorCustom(),CenterCropCustom(224)])
 
 
 
@@ -214,6 +213,7 @@ visualize_raw_data_loader(raw_loader)
 visualize_output_loader(JB_train_loader)
 
 
+
 #%% Import VAE model
 
 #from models_2 import VariationalAutoencoder,vae_loss
@@ -224,109 +224,89 @@ visualize_output_loader(JB_train_loader)
 latent_dims = config['model_params']['latent_dim']
 variational_beta = config['model_params']['kld_weight']
 
-class Encoder(nn.Module):
+class Encoder(nn.Module): #nn.Module
     def __init__(self):
         super(Encoder, self).__init__()
         
-        self.conv1 = nn.Conv2d(in_channels=3, out_channels=32, kernel_size=3,stride=2,padding=1) # input_dim = [3,224,280];out: [96,54,68]
-        self.bn1 = nn.BatchNorm2d(32)
-        self.drop1 = nn.Dropout(p=0.05)
+        resnet_layers = resnet50(pretrained=True)
+        modules = list(resnet_layers.children())[:-1] # delete last fc layer
+        self.feature_extractor = nn.Sequential(*modules)
+        self.fc1 = nn.Linear(in_features=resnet_layers.fc.in_features,out_features=1024)
+        self.bn1 = nn.BatchNorm1d(self.fc1.out_features)
+        # self.feature_extractor = resnet50(pretrained=True)
+        self.fc2 = nn.Linear(in_features=self.fc1.out_features,out_features=768)
+        self.bn2 = nn.BatchNorm1d(self.fc2.out_features)
         
-        
-        self.conv2 = nn.Conv2d(in_channels=32, out_channels=64, kernel_size=3,stride=2,padding=1) # input_dim = [3,224,280];out: [96,54,68]
-        self.bn2 = nn.BatchNorm2d(64)
-        self.drop2 = nn.Dropout(p=0.05)
-        
-        self.conv3 = nn.Conv2d(in_channels=64, out_channels=128, kernel_size=3,stride=2,padding=1) # input_dim = [3,224,280];out: [96,54,68]
-        self.bn3 = nn.BatchNorm2d(128)
-        self.drop3 = nn.Dropout(p=0.1)
-        
-        self.conv4 = nn.Conv2d(in_channels=128, out_channels=256, kernel_size=3,stride=2,padding=1) # input_dim = [3,224,280];out: [96,54,68]
-        self.bn4 = nn.BatchNorm2d(256)
-        self.drop4 = nn.Dropout(p=0.1)
-        
-        self.conv5 = nn.Conv2d(in_channels=256, out_channels=512, kernel_size=3,stride=2,padding=1) # input_dim = [3,224,280];out: [96,54,68]
-        self.bn5 = nn.BatchNorm2d(512)
-        self.drop5 = nn.Dropout(p=0.5)
-        #Original     (when input image size was 64,64)   
-        # self.fc_mu = nn.Linear(in_features=512*4, out_features=latent_dims)
-        # self.fc_logvar = nn.Linear(in_features=512*4, out_features=latent_dims)
-        
-        self.fc_mu = nn.Linear(in_features=512*6, out_features=latent_dims) # image after all convolutions is 2,3
-        self.fc_logvar = nn.Linear(in_features=512*6, out_features=latent_dims)
+        self.fc_mu = nn.Linear(in_features=self.fc2.out_features, out_features=latent_dims) # image after all convolutions is 2,3
+        self.fc_logvar = nn.Linear(in_features=self.fc2.out_features, out_features=latent_dims)  # image after all convolutions is 2,3
             
     def forward(self, x):
-        x = F.leaky_relu(self.bn1(self.conv1(x)))
-       # x=self.drop1(x)
+       
         
-        x = F.leaky_relu(self.bn2(self.conv2(x)))
-       # x=self.drop2(x)
-        
-        x = F.leaky_relu(self.bn3(self.conv3(x)))
-        #x=self.drop3(x)
-        
-        x = F.leaky_relu(self.bn4(self.conv4(x)))
-       # x=self.drop4(x)
-        
-        x = F.leaky_relu(self.bn5(self.conv5(x)))
-        #x=self.drop5(x)
-        
+        x = self.feature_extractor(x)
         x = x.view(x.size(0), -1)
-        
+        x = F.leaky_relu(self.bn1(self.fc1(x)))
+        x = F.leaky_relu(self.bn2(self.fc2(x)))
         x_mu = self.fc_mu(x)
-        x_logvar = self.fc_logvar(x)
+        x_log_var = self.fc_logvar(x)
         
-        
-        return x_mu, x_logvar
+        return x_mu,x_log_var
 
 class Decoder(nn.Module):
     def __init__(self):
         super(Decoder, self).__init__()
         
-        # Original     (when input image size was 64,64)
-        # self.fc6 = nn.Linear(in_features=latent_dims, out_features=512*4)
-            
+        self.fc3 = nn.Linear(in_features=latent_dims, out_features=768)
+        self.bn3 = nn.BatchNorm1d(self.fc3.out_features)
         
-        # self.unflatten = nn.Unflatten(dim=1, unflattened_size=(512, 2, 2))
+        self.fc4 = nn.Linear(in_features=self.fc3.out_features, out_features=1024)
+        self.bn4 = nn.BatchNorm1d(self.fc4.out_features)
         
-        self.fc6 = nn.Linear(in_features=latent_dims, out_features=512*6)
-            
+        self.fc5 = nn.Linear(in_features=self.fc4.out_features, out_features=512*2*3)
+        self.bn5 = nn.BatchNorm1d(self.fc5.out_features)
         
+        
+                
         self.unflatten = nn.Unflatten(dim=1, unflattened_size=(512, 2, 3))
-        
         
         self.conv_transpose7 = nn.ConvTranspose2d(in_channels=512, out_channels=256, kernel_size=3, stride=2,padding=1,output_padding=(1,0))
         self.bn7 = nn.BatchNorm2d(256)
-        
+                
         self.conv_transpose8 = nn.ConvTranspose2d(in_channels=256, out_channels=128, kernel_size=3, stride=2,padding=1,output_padding=1)
         self.bn8 = nn.BatchNorm2d(128)
-        
-        
+                
+                
         self.conv_transpose9 = nn.ConvTranspose2d(in_channels=128, out_channels=64, kernel_size=3, stride=2,padding=1,output_padding=1)
         self.bn9 = nn.BatchNorm2d(64)
-        
+                
         self.conv_transpose10 = nn.ConvTranspose2d(in_channels=64, out_channels=32, kernel_size=3, stride=2,padding=1,output_padding=1)
         self.bn10 = nn.BatchNorm2d(32)
-        
+                
         self.conv_transpose11 = nn.ConvTranspose2d(in_channels=32, out_channels=32, kernel_size=3, stride=2,padding=1,output_padding=1)
         self.bn11 = nn.BatchNorm2d(32)
-        
-        
+                
+                
         self.conv12 = nn.Conv2d(in_channels=32, out_channels=3, kernel_size=3,padding=1) 
-        
-        
-        
+                
             
     def forward(self, x):
-        x = F.leaky_relu(self.fc6(x))
+        x = F.leaky_relu(self.bn3(self.fc3(x)))
+        x = F.leaky_relu(self.bn4(self.fc4(x)))
+        x = F.leaky_relu(self.bn5(self.fc5(x)))
         
+        
+        
+        # x = F.leaky_relu(self.fc7(x))
         
         x = self.unflatten(x)
         
        
+       
+        # x = F.leaky_relu(self.bn8(self.conv_transpose8(x)))
         x = F.leaky_relu(self.bn7(self.conv_transpose7(x)))
         x = F.leaky_relu(self.bn8(self.conv_transpose8(x)))
         x = F.leaky_relu(self.bn9(self.conv_transpose9(x)))
+        
         x = F.leaky_relu(self.bn10(self.conv_transpose10(x)))
         x = F.leaky_relu(self.bn11(self.conv_transpose11(x)))
         x = F.tanh(self.conv12(x))
@@ -344,7 +324,7 @@ class VariationalAutoencoder(nn.Module):
     def forward(self, x):
         latent_mu, latent_logvar = self.encoder(x)
         latent = self.latent_sample(latent_mu, latent_logvar) #sample the latent vector z
-        x_recon = self.decoder(latent_mu) # pass the sampled latent vector z to the decoder. changed to latent_mu for vanilla autoencoder i.e. no sampling
+        x_recon = self.decoder(latent) # pass the sampled latent vector z to the decoder. changed to latent_mu for vanilla autoencoder i.e. no sampling
         # return x_recon, latent_mu, latent_logvar #was this previously
         return x_recon,latent,latent_mu,latent_logvar #also return latent sample
     
@@ -360,15 +340,23 @@ class VariationalAutoencoder(nn.Module):
 # A very good resource on VAE theory is here - could be useful in making sure input-output dimensions
 # are consistent (https://sebastianraschka.com/pdf/lecture-notes/stat453ss21/L17_vae__slides.pdf)            
         
-        
+#loss_metric = 'MSSSIM' # MSSSIM or SSIM
+#loss_func = msssim if loss_metric == 'MSSSIM' else ssim
+
+#value = loss_func(img1, img2)
+
+
 def vae_loss(recon_x, x, mu, logvar,variational_beta):
     
     
     # Mean squared error loss - by default, the loss is averaged over number of elements,
     # alternatives for reduction are 'none' or 'sum'
     recon_loss = torch.nn.MSELoss(reduction='sum') (recon_x,x)
-    #recon_loss  = 0.4*torch.nn.L1Loss(reduction='mean') (recon_x,x)+(1-ssim(recon_x,x))
+    # recon_loss  = 0.2*torch.nn.L1Loss(reduction='mean') (recon_x,x)+(1-ssim(recon_x,x))
     
+    #recon_loss = lpips(recon_x,x)
+    
+    #recon_loss = torch.nn.L1Loss(reduction='sum') (recon_x,x)
     kldivergence = torch.mean(-0.5 * torch.sum(1 + logvar - mu.pow(2) - logvar.exp(),dim=1),dim=0) # mostly consistent with https://arxiv.org/pdf/1907.08956v1.pdf
     
         
@@ -377,6 +365,20 @@ def vae_loss(recon_x, x, mu, logvar,variational_beta):
 
 
 vae = VariationalAutoencoder()
+
+#weights of the feature extractor
+
+# for param in vae.encoder.feature_extractor.parameters():
+    
+#     param.requires_grad = False
+    
+# # Freeze only the batch normalization of resnet50( as an experiment) 
+
+# for module,param in zip(vae.encoder.feature_extractor.modules(),vae.encoder.feature_extractor.parameters()):
+#     if isinstance(module,nn.BatchNorm2d):
+#         param.requires_grad = False
+
+
 '''
 # Change vae params according to config file
 vae.encoder.fc_mu.out_features = config['model_params']['latent_dim']
@@ -400,18 +402,17 @@ def init_weights(layer):
 
 # Call initialization function on encoder weights
 
-init_weights(vae.encoder.conv1)
-init_weights(vae.encoder.conv2)
-init_weights(vae.encoder.conv3)
-init_weights(vae.encoder.conv4)
-init_weights(vae.encoder.conv5)
-
+init_weights(vae.encoder.fc1)
+init_weights(vae.encoder.fc2)
 init_weights(vae.encoder.fc_mu)
 init_weights(vae.encoder.fc_logvar)
 
+
 # Initialize decoder weights
 
-init_weights(vae.decoder.fc6)
+init_weights(vae.decoder.fc3)
+init_weights(vae.decoder.fc4)
+init_weights(vae.decoder.fc5)
 
 init_weights(vae.decoder.conv_transpose7)
 init_weights(vae.decoder.conv_transpose8)
@@ -420,10 +421,10 @@ init_weights(vae.decoder.conv_transpose10)
 init_weights(vae.decoder.conv_transpose11)
 init_weights(vae.decoder.conv12)
 
-# Get number of trainable parameters in the model
-num_params = sum(p.numel() for p in vae.parameters() if p.requires_grad)
+# # Get number of trainable parameters in the model
+# num_params = sum(p.numel() for p in vae.parameters() if p.requires_grad)
 
-print(vae)
+# print(vae)
 
 
 
@@ -544,13 +545,23 @@ for epoch in range(num_epochs):
         # Calculate loss
         loss,recon_train_loss,kl_train_loss = vae_loss(image_recon, images, mu_z, log_var_z,variational_beta)
         
-       # zero the parameter (weight) gradients
+        
+        #while loss < 0.999:
+        
+        
+    
+    
+        
+        
+        
+        
+           # zero the parameter (weight) gradients
         optimizer.zero_grad()
-            
-            # backward pass to calculate the weight gradients
+                
+                # backward pass to calculate the weight gradients
         loss.backward()
-
-            # update the weights
+    
+                # update the weights
         optimizer.step()
         
         
@@ -642,7 +653,7 @@ best_model = VariationalAutoencoder()
 # Change vae params according to config file
 best_model.encoder.fc_mu.out_features = latent_dims
 best_model.encoder.fc_logvar.out_features = latent_dims
-best_model.decoder.fc6.in_features = latent_dims
+best_model.decoder.fc3.in_features = latent_dims
 
 #best_model.load_state_dict(torch.load(saved_models_path+'/'+ best_model_name,map_location=('cpu'))) # original mapped location is cpu
 
@@ -771,6 +782,7 @@ for target_idx,sample in enumerate(target_dataset):
 #compute statistics of loss of the model on test dataset 
 eval_mean_test_loss = np.mean(test_recon_loss_over_time)
 eval_std_test_loss = np.std(test_recon_loss_over_time)
+#run["metrics/test_loss_over_time"].log(test_recon_loss_over_time)
 run["metrics/mean_test_loss"].log(eval_mean_test_loss)
 run["metrics/std_test_loss"].log(eval_std_test_loss)
 
@@ -783,6 +795,8 @@ eval_std_target_loss = np.std(target_recon_loss_over_time)
 
 diff_recon_error = eval_mean_test_loss - eval_mean_target_loss
 
+
+#run["metrics/target_loss_over_time"].log(target_recon_loss_over_time)
 run["metrics/mean_target_loss"].log(eval_mean_target_loss)
 run["metrics/std_target_loss"].log(eval_std_target_loss)
 run["metrics/recon_error_separation"].log(diff_recon_error)
@@ -818,7 +832,7 @@ plt.legend()
 plt.grid()
 plt.show(block=False)
 
-binwidth=500
+binwidth=500 #was originally 500
 loss_distb_fig = plt.figure()
 plt.title('loss distributions')
 plt.hist(train_test_loss_over_time,density=True, alpha=0.5, bins=np.arange(min(train_test_loss_over_time), max(train_test_loss_over_time) + binwidth, binwidth),label='training dataset')
@@ -852,10 +866,10 @@ run["predictions/test_eval_recon_imgs"].upload(File.as_image(test_eval_images_ex
 run["predictions/train_eval_recon_imgs"].upload(File.as_image(train_eval_images_export))
 run["predictions/target_eval_recon_imgs"].upload(File.as_image(target_eval_images_export))
 
-run["metrics/loss_distb"].upload(File.as_image(loss_distb_fig))
+# run["metrics/loss_distb"].upload(File.as_image(loss_distb_fig))
 
-run["metrics/recon_loss_distb"].upload(File.as_image(recon_loss_distb_fig))
-#[CONTINUE FROM HERE]
+# run["metrics/recon_loss_distb"].upload(File.as_image(recon_loss_distb_fig))
+# #[CONTINUE FROM HERE]
 
 # Save this for later - tensorboard visualizations for autoencoders (https://uvadlc-notebooks.readthedocs.io/en/latest/tutorial_notebooks/tutorial9/AE_CIFAR10.html)  
 
@@ -892,7 +906,7 @@ tsne_combined_reduced_latent_space_array = MinMaxScaler().fit_transform(tsne_com
 
 # plot normalized tsne plot with anomalies overlaid
 plt.figure()
-plt.scatter(tsne_combined_reduced_latent_space_array[0:len(std_latent_space_array),0],tsne_combined_reduced_latent_space_array[0:len(std_latent_space_array),1],alpha=0.4) # was originally len(JB_train_dataset)
+plt.scatter(tsne_combined_reduced_latent_space_array[0:len(std_latent_space_array),0],tsne_combined_reduced_latent_space_array[0:len(std_latent_space_array),1],alpha=0.3) # was originally len(JB_train_dataset)
 plt.scatter(tsne_combined_reduced_latent_space_array[(len(std_latent_space_array)+1):,0],tsne_combined_reduced_latent_space_array[(len(std_latent_space_array)+1):,1],alpha=0.4,c='red')
 
 plt.grid()
@@ -901,7 +915,7 @@ plt.show(block=False)
 
 
 
-#%%
+#%% PCA reduction
 
 
 
@@ -922,7 +936,7 @@ norm_pca_components = MinMaxScaler().fit_transform(pca_components)
 reduced_latent_space_figure = plt.figure(figsize = (15,10))
 plt.subplot(121)
 
-plt.scatter(tsne_combined_reduced_latent_space_array[0:len(std_latent_space_array),0],tsne_combined_reduced_latent_space_array[0:len(std_latent_space_array),1],alpha=0.2) # was originally len(JB_train_dataset)
+plt.scatter(tsne_combined_reduced_latent_space_array[0:len(std_latent_space_array),0],tsne_combined_reduced_latent_space_array[0:len(std_latent_space_array),1],alpha=0.3) # was originally len(JB_train_dataset)
 plt.scatter(tsne_combined_reduced_latent_space_array[(len(std_latent_space_array)+1):,0],tsne_combined_reduced_latent_space_array[(len(std_latent_space_array)+1):,1],alpha=0.4,c='red')
 plt.grid()
 plt.legend()
@@ -930,7 +944,7 @@ plt.legend()
 plt.subplot(122)
 #plt.scatter(norm_pca_components[:,0],norm_pca_components[:,1],label='PCA reduction',c='green',alpha=0.2)
 
-plt.scatter(norm_pca_components[0:len(std_latent_space_array),0],norm_pca_components[0:len(std_latent_space_array),1],alpha=0.2,c='green')
+plt.scatter(norm_pca_components[0:len(std_latent_space_array),0],norm_pca_components[0:len(std_latent_space_array),1],alpha=0.3,c='green')
 plt.scatter(norm_pca_components[(len(std_latent_space_array)+1):,0],norm_pca_components[(len(std_latent_space_array)+1):,1],alpha=0.4,c='red')
 
 
@@ -939,18 +953,19 @@ plt.legend()
 plt.show(block=False)
 
 
-run["predictions/pca_latent_space"].upload(File.as_image(reduced_latent_space_figure)) 
+# run["predictions/pca_latent_space"].upload(File.as_image(reduced_latent_space_figure)) 
  
 #%% Plot 3d latent space combined with recon error
+'''
+fig_latent_recon_error = plt.figure(figsize=(15,15))
+ax = fig_latent_recon_error.add_subplot(projection='3d')
 
-fig = plt.figure(figsize=(15,15))
-ax = fig.add_subplot(projection='3d')
+plt.scatter(tsne_combined_reduced_latent_space_array[0:len(JB_test_dataset),0],tsne_combined_reduced_latent_space_array[0:len(JB_test_dataset),1] , test_recon_loss_over_time)
+plt.scatter(tsne_combined_reduced_latent_space_array[len(JB_test_dataset):,0],tsne_combined_reduced_latent_space_array[len(JB_test_dataset),1] , target_recon_loss_over_time,c='red')
+plt.view_init(elev=20, azim=45)
+run["predictions/latent_recon_error"].upload(File.as_image(fig_latent_recon_error)) 
 
-ax.scatter(tsne_combined_reduced_latent_space_array[0:len(JB_test_dataset),0],tsne_combined_reduced_latent_space_array[0:len(JB_test_dataset),1] , test_recon_loss_over_time)
-ax.scatter(tsne_combined_reduced_latent_space_array[len(JB_test_dataset):,0],tsne_combined_reduced_latent_space_array[len(JB_test_dataset),1] , target_recon_loss_over_time,c='red')
-ax.view_init(elev=20, azim=45)
-
-
+'''
 #%% New way to overlay images on latent space
 
 
@@ -987,7 +1002,7 @@ def compute_plot_coordinates(image, x, y, image_centers_area_size, offset):
 def visualize_tsne_images(tx, ty, images, plot_size=1000, max_image_size=5):
     # we'll put the image centers in the central area of the plot
     # and use offsets to make sure the images fit the plot
-    max_image_size=100
+    max_image_size=50
     plot_size = 1000
     offset = max_image_size // 2
     image_centers_area_size = plot_size - 2 * offset
@@ -1014,13 +1029,15 @@ def visualize_tsne_images(tx, ty, images, plot_size=1000, max_image_size=5):
     plt.show(block=False)
     return tsne_img_plot
 
-random_indexes = np.random.randint(0,len(std_latent_space_array),400)
+random_indexes = np.random.randint(0,len(std_latent_space_array),600)
 
 tsne_array_random_subset = tsne_combined_reduced_latent_space_array[random_indexes]
-images_random_subset = np.array(train_image_paths)[random_indexes]
+images_random_subset = np.array(test_image_paths)[random_indexes]
 
 tsne_img_overlay = visualize_tsne_images(tsne_array_random_subset[:,0],tsne_array_random_subset[:,1],images_random_subset)
     
 run["predictions/latent_img_visualization"].upload(File.as_image(tsne_img_overlay))
 
 run.stop()
+
+
