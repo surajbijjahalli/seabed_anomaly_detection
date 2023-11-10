@@ -473,7 +473,7 @@ def visualize_output_loader(data_loader,batch_plot_size=10):
     
     for i in range(batch_plot_size):
         idx = random.randint(0,batch_plot_size)
-        ax = plt.subplot(batch_plot_size/5, 5, i+1)
+        ax = plt.subplot(int(batch_plot_size/5), 5, i+1)
         ImgPlot = images[idx]
         # ImgPlot = transforms.Normalize(mean=[-0.485/0.229, -0.456/0.224, -0.406/0.225],std=[(1/0.229), (1/0.224), (1/0.225)])(ImgPlot)
         ImgPlot = ImgPlot.detach().numpy()
@@ -499,7 +499,9 @@ def visualize_raw_data_loader(data_loader,batch_plot_size=10):
     
     for i in range(batch_plot_size):
         idx = random.randint(0,batch_plot_size)
-        ax = plt.subplot(batch_plot_size/5, 5, i+1)
+        ax = plt.subplot(int(batch_plot_size/5), int(5), i+1)
+        #ax = plt.subplot(2, 5, i+1)
+        
         # ImgPlot = images[idx]
         # ImgPlot = ImgPlot.numpy()
         # ImgPlot = np.transpose(ImgPlot, (1, 2, 0)) 

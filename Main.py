@@ -27,11 +27,11 @@ from torchvision import transforms, utils
 
 #%%
 
-from torch.utils.tensorboard import SummaryWriter
+#from torch.utils.tensorboard import SummaryWriter
 
 # Logging metadata
-import neptune.new as neptune
-from neptune.new.types import File
+import neptune #import neptune.new as neptune
+#from neptune import File #from neptune.new.types import File
 
 import yaml
 
@@ -59,7 +59,7 @@ config_file_name = args.Filename
 
 # Create neptune run object for logging metrics and metadata
 # NEPTUNE_API_TOKEN = "<api-token-here>"
-run = neptune.init(
+run = neptune.init_run(
     project="acfr-marine/seabed-anomaly-detection",
     api_token="eyJhcGlfYWRkcmVzcyI6Imh0dHBzOi8vYXBwLm5lcHR1bmUuYWkiLCJhcGlfdXJsIjoiaHR0cHM6Ly9hcHAubmVwdHVuZS5haSIsImFwaV9rZXkiOiIzMGRhZjQzOS1mMTE2LTQ3NzUtYWEwYS1hNDg0ZDAxOTVhZTgifQ==",
 )  # your credentials
@@ -116,7 +116,7 @@ else:
 # os.mkdir(experiment_path) 
 # print("Directory '% s' created" % experiment_path) 
 
-writer = SummaryWriter()
+#writer = SummaryWriter()
 #%% Grab paths to training images
 
 #train_data_path = '/media/surajb/Extreme SSD/marine_dataset_Jervis_2021/r20210407_061916_NG106_hyams_depth_gated_target/raw_targetless_imgs/alp/converted_images'
