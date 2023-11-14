@@ -1,13 +1,12 @@
 
 # marine_anomaly_detection
-Detecting anomalies in seafloor images. Train a Variational Autoencoder (VAE) to reconstruct images of the seafloor. Anomalies in large marine datasets are detected by monitoring the reconstruction error and the density of the latent features. The key idea is that anomalous images will have a high reconstruction error and will lie in the low density regions of the latent feature space. The Arxiv manuscript is here: https://arxiv.org/abs/2306.04834![anomaly_system_overview](https://github.com/surajbijjahalli/seabed_anomaly_detection/assets/anomaly_system_overview.png)
-![anomaly_system_overview](https://github.com/surajbijjahalli/seabed_anomaly_detection/assets/9429149/d6021e44-60a2-4a67-8654-9893323f530c)
+Detecting anomalies in seafloor images. Train a Variational Autoencoder (VAE) to reconstruct images of the seafloor. Anomalies in large marine datasets are detected by monitoring the reconstruction error and the density of the latent features. The key idea is that anomalous images will have a high reconstruction error and will lie in the low density regions of the latent feature space. The Arxiv manuscript is here: https://arxiv.org/abs/2306.04834 ![anomaly_system_overview](/assets/anomaly_system_overview.png)
 
 ## Example of high reconstruction error for anomalous images (images containing artificial objects)
-![contoured_anomaly_maps](https://github.com/surajbijjahalli/seabed_anomaly_detection/assets/contoured_anomaly_maps)
+![contoured_anomaly_maps](/assets/contoured_anomaly_maps.png)
 
 ## Example of anomalous images in the low-density regions of the latent feature space
-![latent_space_plot_cluster](https://github.com/surajbijjahalli/seabed_anomaly_detection/assets/kde_plot_testdata)
+![latent_space_plot_cluster](/assets/kde_plot_testdata.png)
 
 ## Usage
 * Create a yaml config file in the config folder. A baseline configuration is provided as an example. 
