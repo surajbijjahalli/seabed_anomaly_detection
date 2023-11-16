@@ -22,6 +22,37 @@ import torch.nn.functional as F
 from torch.utils.data import Dataset, DataLoader
 import yaml
 
+# Create the parser
+my_parser = argparse.ArgumentParser(description='train and test a model using a specified config file')
+
+# Add the arguments
+my_parser.add_argument('Experimentname',
+                       metavar='experimentname',
+                       type=int,
+                       help='the name of the experiment to evaluate')
+
+# Execute the parse_args() method
+args = my_parser.parse_args()
+
+experiment_name = args.Experimentname
+CONFIG_PATH = str(experiment_name) + '/'
+config_file_name = str(experiment_name) + '.yaml'
+
+# Function to load yaml configuration file
+def load_config(config_name):
+    with open(os.path.join(CONFIG_PATH, config_name)) as file:
+        config = yaml.safe_load(file)
+
+    return config
+
+
+#config = load_config("baseline.yaml")
+config = load_config(config_file_name)
+
+# define model
+
+latent_dims = config['model_params']['latent_dim']
+variational_beta = config['model_params']['kld_weight']
 
 class Encoder(nn.Module):
     def __init__(self):
@@ -51,8 +82,8 @@ class Encoder(nn.Module):
         # self.fc_mu = nn.Linear(in_features=512*4, out_features=latent_dims)
         # self.fc_logvar = nn.Linear(in_features=512*4, out_features=latent_dims)
         
-        self.fc_mu = nn.Linear(in_features=512*6, out_features=64) # image after all convolutions is 2,3
-        self.fc_logvar = nn.Linear(in_features=512*6, out_features=64)
+        self.fc_mu = nn.Linear(in_features=512*6, out_features=latent_dims) # image after all convolutions is 2,3
+        self.fc_logvar = nn.Linear(in_features=512*6, out_features=latent_dims)
             
     def forward(self, x):
         x = F.leaky_relu(self.bn1(self.conv1(x)))
@@ -82,13 +113,9 @@ class Decoder(nn.Module):
     def __init__(self):
         super(Decoder, self).__init__()
         
-        # Original     (when input image size was 64,64)
-        # self.fc6 = nn.Linear(in_features=latent_dims, out_features=512*4)
-            
         
-        # self.unflatten = nn.Unflatten(dim=1, unflattened_size=(512, 2, 2))
         
-        self.fc6 = nn.Linear(in_features=64, out_features=512*6)
+        self.fc6 = nn.Linear(in_features=latent_dims, out_features=512*6)
             
         
         self.unflatten = nn.Unflatten(dim=1, unflattened_size=(512, 2, 3))
@@ -175,73 +202,272 @@ def vae_loss(recon_x, x, mu, logvar,variational_beta):
     return recon_loss + variational_beta * kldivergence, recon_loss, kldivergence
 
 
+model = VariationalAutoencoder()
+list_of_files = glob.glob(CONFIG_PATH +'saved_models/*') # * means all if need specific format then *.csv
+latest_file = max(list_of_files, key=os.path.getmtime)
+model_file_name = latest_file
 
+ 
+model.load_state_dict(torch.load(model_file_name,map_location=('cpu'))) # original mapped location is cpu
 
-class Evaluate_model():
-    """Rescale the image in a sample to a given size.
+train_data_path = config['data_params']['train_data_path']
+test_data_path = config['data_params']['test_data_path']
+val_data_path = config['data_params']['val_data_path']
+target_data_path = config['data_params']['target_data_path']
 
-    Args:
-        output_size (tuple or int): Desired output size. If tuple, output is
-            matched to output_size. If int, smaller of image edges is matched
-            to output_size keeping aspect ratio the same.
-    """
+# Empty list to store paths to images
+train_image_paths = []
+test_image_paths = []
+val_image_paths = []
+target_image_paths=[]
 
-    def __init__(self,experiment_name,normal_dataset,anomaly_dataset):
-        
-        self.experiment_name = str(experiment_name)
-        CONFIG_PATH = str(experiment_name) + '/'
-        
-        self.normal_dataset = normal_dataset
-        self.anomaly_dataset = anomaly_dataset
-       # self.config = yaml.safe_load(open(os.path.join(CONFIG_PATH, self.experiment_name + '.yaml')))
-        self.config = yaml.safe_load(open( self.experiment_name + '.yaml'))
-        
-        
-        self.latent_dims = self.config['model_params']['latent_dim']
-        self.variational_beta = self.config['model_params']['kld_weight']
-        
-        
-        self.model = VariationalAutoencoder()
-
+# Grab paths to images in train folder
+for data_path in glob.glob(train_data_path + '/*'):
     
+    train_image_paths.append(data_path)
+    
+train_image_paths = list(train_image_paths)
+
+# Grab paths to images in test folder
+for data_path in glob.glob(test_data_path + '/*'):
+    
+    test_image_paths.append(data_path)
+    
+test_image_paths = list(test_image_paths)
+
+
+# Grab paths to images in validation folder
+for data_path in glob.glob(val_data_path + '/*'):
+    
+    val_image_paths.append(data_path)
+    
+val_image_paths = list(val_image_paths)
+
+
+for data_path in glob.glob(target_data_path + '/*'):
+    
+    target_image_paths.append(data_path)
+    
+target_image_paths = list(target_image_paths)
+
+
+from data_load import create_datasets,RescaleCustom, RandomCropCustom, NormalizeNew, ToTensorCustom, RandomRotateCustom, RandomHorizontalFlip,RandomVerticalFlip,NewColorJitter
+from torchvision import transforms, utils
+from data_load import MarineBenthicDataset
+
+transform = transforms.Compose([RescaleCustom(64), ToTensorCustom()])
+
+
+                
+# create datasets for training, validation and testing. 
+test_dataset = MarineBenthicDataset(test_image_paths,transform=transform)
+
+# create new training dataset for each epoch
+train_dataset = MarineBenthicDataset(train_image_paths,transform=transform)
+
+
         
-        # Change vae params according to config file
-        self.model.encoder.fc_mu.out_features = self.latent_dims
-        self.model.encoder.fc_logvar.out_features = self.latent_dims
-        self.model.decoder.fc6.in_features = self.latent_dims
+target_dataset = MarineBenthicDataset(target_image_paths,transform=transform)
+  
 
-        #best_model.load_state_dict(torch.load(saved_models_path+'/'+ best_model_name,map_location=('cpu'))) # original mapped location is cpu
-
-        #self.model.load_state_dict(torch.load(saved_models_path+'/'+ best_model_name,map_location=device)) # new location is device
-
-        
-        
-    def print_model(self):
-        print(self.model)
+# load training data in batches
+train_loader = DataLoader(train_dataset, 
+                          batch_size=32,
+                          shuffle=True, 
+                          num_workers=0)
 
 
 
+# load test data in batches
+test_loader = DataLoader(test_dataset, 
+                         batch_size=len(test_dataset),
+                         shuffle=True,  
+                         num_workers=0)
+
+target_loader = DataLoader(target_dataset, 
+                         batch_size=len(target_dataset),
+                         shuffle=True,  
+                         num_workers=0)
+
+
+
+#initialize arrays for storing loss on training and test datasets
+train_test_loss_over_time = np.zeros(len(train_dataset))
+train_test_recon_loss_over_time = np.zeros(len(train_dataset))
+train_test_kl_loss_over_time = np.zeros(len(train_dataset))
+
+
+
+test_loss_over_time = np.zeros(len(test_dataset))
+test_recon_loss_over_time = np.zeros(len(test_dataset))
+test_kl_loss_over_time = np.zeros(len(test_dataset))
+
+#initialize arrays for storing loss on target dataset
+target_loss_over_time = np.zeros(len(target_dataset))
+target_recon_loss_over_time = np.zeros(len(target_dataset))
+target_kl_loss_over_time = np.zeros(len(target_dataset))
+
+
+
+latent_space_training_set = np.zeros((len(train_dataset),int(config['model_params']['latent_dim'])))
+
+latent_space_target_set = np.zeros((len(target_dataset),int(config['model_params']['latent_dim'])))
+
+latent_space_test_set = np.zeros((len(test_dataset),int(config['model_params']['latent_dim'])))
+
+
+
+model.eval()
+
+
+for idx, data in enumerate(test_dataset):
+    
+    # get the input images in each batch and their corresponding names
+    images = data['image']
+    name = data['name']
+    
+    #images = images.to(device)
+    images = torch.unsqueeze(images,0)
+    # forward pass the images through the network
+    
+    image_recon,latent_sample_z,mu_z,log_var_z = model(images)
+    latent_space_test_set[idx,:] = log_var_z.detach().cpu().numpy()
+
+
+for idx, data in enumerate(target_dataset):
+    
+    # get the input images in each batch and their corresponding names
+    images = data['image']
+    name = data['name']
+    
+    #images = images.to(device)
+    images = torch.unsqueeze(images,0)
+    # forward pass the images through the network
+    
+    image_recon,latent_sample_z,mu_z,log_var_z = model(images)
+    latent_space_target_set[idx,:] = log_var_z.detach().cpu().numpy()
+
+from sklearn.preprocessing import StandardScaler,MinMaxScaler
+
+# change the latent space array to either the train dataset (latent_space_array) or the test dataset(latent_space_test_set_array) as per requirement
+latent_space_test_set = StandardScaler().fit_transform(latent_space_test_set) # was fit _transform(latent_space_array) before - when trying to fit the training set
+latent_space_target_set = StandardScaler().fit_transform(latent_space_target_set)
+from sklearn.decomposition import PCA
+
+
+pca = PCA(n_components=3,whiten=False)
+pca_components = pca.fit_transform(latent_space_test_set)
+
+target_pca_components = pca.transform(latent_space_target_set)
+
+plt.figure()
+plt.scatter(pca_components[:,0],pca_components[:,1],alpha=0.2,c='green')
+plt.scatter(target_pca_components[:,0],target_pca_components[:,1],alpha=0.2,c='red')
+plt.grid()
+
+plt.figure()
+plt.scatter(pca_components[:,1],pca_components[:,2],alpha=0.2,c='green')
+plt.scatter(target_pca_components[:,1],target_pca_components[:,2],alpha=0.2,c='red')
+plt.grid()
+
+plt.figure()
+plt.scatter(pca_components[:,0],pca_components[:,2],alpha=0.2,c='green')
+plt.scatter(target_pca_components[:,0],target_pca_components[:,2],alpha=0.2,c='red')
+plt.grid()
+
+fig = plt.figure()
+ax = fig.add_subplot(projection='3d')
+ax.scatter(pca_components[:,0],pca_components[:,1],pca_components[:,2], alpha=0.2,c='green')
+ax.scatter(target_pca_components[:,0],target_pca_components[:,1],target_pca_components[:,2], alpha=0.2,c='red')
+#%%
+import seaborn as sns
+
+from scipy import stats
+from sklearn.cluster import DBSCAN
+from sklearn import metrics
 # =============================================================================
-# def __call__(self, sample):
-#         image, key_pts = sample['image'], sample['keypoints']
+# plt.figure()
+# somefig, someax = plt.subplots(figsize=(6, 6))
+# sns.scatterplot(
+#     data=pca_components,
+#     x=pca_components[:,0],
+#     y=pca_components[:,1],
+#     color="g",
+#     ax=someax,alpha=0.4
+# )
 # 
-#         h, w = image.shape[:2]
-#         if isinstance(self.output_size, int):
-#             if h > w:
-#                 new_h, new_w = self.output_size * h / w, self.output_size
-#             else:
-#                 new_h, new_w = self.output_size, self.output_size * w / h
-#         else:
-#             new_h, new_w = self.output_size
-# 
-#         new_h, new_w = int(new_h), int(new_w)
-# 
-#         img = cv2.resize(image, (new_w, new_h))
-#         
-#         # scale the pts, too
-#         key_pts = key_pts * [new_w / w, new_h / h]
-# 
-#         return {'image': img, 'keypoints': key_pts}
+# sns.scatterplot(
+#     data=pca_components,
+#     x=target_pca_components[:,0],
+#     y=target_pca_components[:,1],
+#     color="r",
+#     ax=someax,alpha=0.4
+# )
+# sns.kdeplot(
+#     data=pca_components,
+#     x=pca_components[:,0],
+#     y=pca_components[:,1],
+#     levels=50,
+#     alpha=0.4,
+#     ax=someax,
+# )
 # =============================================================================
 
-eval_model = Evaluate_model(10, 'normal_dataset', 'anomaly_dataset')
+# %%
+pca_combined = np.concatenate((pca_components,target_pca_components))
+db = DBSCAN(eps=0.6, min_samples=4).fit(pca_combined)
+core_samples_mask = np.zeros_like(db.labels_, dtype=bool)
+core_samples_mask[db.core_sample_indices_] = True
+labels = db.labels_
+
+# Number of clusters in labels, ignoring noise if present.
+n_clusters_ = len(set(labels)) - (1 if -1 in labels else 0)
+n_noise_ = list(labels).count(-1)
+
+print("Estimated number of clusters: %d" % n_clusters_)
+print("Estimated number of noise points: %d" % n_noise_)
+# =============================================================================
+# print("Homogeneity: %0.3f" % metrics.homogeneity_score(labels_true, labels))
+# print("Completeness: %0.3f" % metrics.completeness_score(labels_true, labels))
+# print("V-measure: %0.3f" % metrics.v_measure_score(labels_true, labels))
+# print("Adjusted Rand Index: %0.3f" % metrics.adjusted_rand_score(labels_true, labels))
+# print(
+#     "Adjusted Mutual Information: %0.3f"
+#     % metrics.adjusted_mutual_info_score(labels_true, labels)
+# )
+# print("Silhouette Coefficient: %0.3f" % metrics.silhouette_score(X, labels))
+# =============================================================================
+
+plt.figure()
+# Black removed and is used for noise instead.
+unique_labels = set(labels)
+colors = [plt.cm.Spectral(each) for each in np.linspace(0, 1, len(unique_labels))]
+for k, col in zip(unique_labels, colors):
+    if k == -1:
+        # Black used for noise.
+        col = [0, 0, 0, 1]
+
+    class_member_mask = labels == k
+
+    xy = pca_combined[class_member_mask & core_samples_mask]
+    plt.plot(
+        xy[:, 0],
+        xy[:, 1],
+        "o",
+        markerfacecolor=tuple(col),
+        markeredgecolor="k",
+        markersize=14,
+    )
+
+    xy = pca_combined[class_member_mask & ~core_samples_mask]
+    plt.plot(
+        xy[:, 0],
+        xy[:, 1],
+        "o",
+        markerfacecolor=tuple(col),
+        markeredgecolor="k",
+        markersize=6,
+    )
+
+plt.title("Estimated number of clusters: %d" % n_clusters_)
+plt.show()
